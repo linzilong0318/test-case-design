@@ -133,7 +133,7 @@ curl -X POST "{ip}/api/v1/testcase/save" \
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `file` | file | 是 | 上传的 Markdown 文件 |
+| `file` | file | 是 | 上传的 PDF 文件 |
 
 ### 3.4 Response
 
@@ -145,9 +145,9 @@ curl -X POST "{ip}/api/v1/testcase/save" \
   "message": "",
   "data": {
     "sessionId": "session_01",
-    "fileName": "test.md",
-    "relativePath": "/path/test.md",
-    "url": "http://xxxxxxx/path/test.md",
+    "fileName": "test.pdf",
+    "relativePath": "/path/test.pdf",
+    "url": "http://xxxxxxx/path/test.pdf",
     "type": "CHECKLIST"
   }
 }
@@ -165,16 +165,18 @@ curl -X POST "{ip}/api/v1/testcase/save" \
 
 ### 3.5 curl 命令模板
 
-**上传待澄清需求清单**：
+**上传待澄清需求清单**（如已生成）：
 ```bash
-curl -X POST "{ip}/api/v1/file/upload?type=CHECKLIST&sessionId={sessionId}&batchNo={batchNo}" \
-  -F "file=@/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.md"
+if [ -f "/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" ]; then
+  curl -X POST "{ip}/api/v1/file/upload?type=CHECKLIST&sessionId={sessionId}&batchNo={batchNo}" \
+    -F "file=@/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf"
+fi
 ```
 
 **上传测试用例评审报告**：
 ```bash
 curl -X POST "{ip}/api/v1/file/upload?type=REPORT&sessionId={sessionId}&batchNo={batchNo}" \
-  -F "file=@/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.md"
+  -F "file=@/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf"
 ```
 
 > **注意**：URL 参数中的特殊字符（如中文）需要 URL 编码。文件名中的中文在 `-F` 中通常可以正常处理，如有问题可先重命名为英文名再上传。
@@ -187,19 +189,20 @@ curl -X POST "{ip}/api/v1/file/upload?type=REPORT&sessionId={sessionId}&batchNo=
 
 ```
 /tmp/test-case-design/{sessionId}/
-├── requirements.pdf              # 阶段一下载的需求文档 PDF
+├── requirements.pdf              # 阶段一下载的需求文档（PDF 格式）
+├── requirements.docx             # 阶段一下载的需求文档（DOCX 格式，二选一）
 ├── upload_payload.json           # 阶段二用例上传的 JSON payload（可选）
-├── 待澄清需求清单_{batchNo}.md   # 阶段三生成的待澄清需求清单
-└── 测试用例评审报告_{batchNo}.md  # 阶段三生成的测试用例评审报告
+├── 待澄清需求清单_{batchNo}.pdf  # 阶段三生成的待澄清需求清单（按需生成）
+└── 测试用例评审报告_{batchNo}.pdf # 阶段三生成的测试用例评审报告
 ```
 
 ### 4.2 生命周期
 
 | 阶段 | 操作 |
 |------|------|
-| 阶段一 | `mkdir -p` 创建目录，下载 PDF 到目录 |
+| 阶段一 | 准备环境（`uv pip install` 安装依赖），创建目录，下载 PDF 或 DOCX 到目录 |
 | 阶段二 | 可选：写入 JSON payload 文件用于 curl 上传 |
-| 阶段三 | 写入两份 MD 文件，上传到后端 |
+| 阶段三 | 使用 reportlab 生成 PDF 文件（评审报告必生 + 待澄清清单按需），上传到后端 |
 | 阶段四 | **统一清理**：`rm -rf /tmp/test-case-design/{sessionId}/` |
 
 ### 4.3 清理命令
@@ -208,7 +211,7 @@ curl -X POST "{ip}/api/v1/file/upload?type=REPORT&sessionId={sessionId}&batchNo=
 rm -rf "/tmp/test-case-design/{sessionId}/"
 ```
 
-> **原则**：所有临时文件在流程结束时必须清理，确保本地不残留 PDF 和 MD 文件。
+> **原则**：所有临时文件在流程结束时必须清理，确保本地不残留 PDF、DOCX 等文件。
 
 ---
 
