@@ -7,6 +7,8 @@ description: 这项技能用于后端驱动的全流程测试用例设计：从 
 
 本 skill 服务于后端驱动的测试用例生成全流程，通过 `sessionId` 串联多轮对话。
 
+> **⚠️ Hermes Agent 环境前置要求**：如果运行在 Hermes Agent 下，**必须先加载 `hermes-env-pitfalls` skill**。该 skill 解决了已知的 `/tmp/` 写文件拒绝、数字自动替换、heredoc 字节损坏等问题。本 skill 已采用 `/opt/data/tmp/` 作为默认临时路径以兼容该环境。
+
 **入口判断**：根据用户请求内容，自动识别当前处于哪个阶段：
 - **阶段一（需求获取）**：用户请求中包含 PDF/DOCX 下载链接 + "理解并整理需求"/"下载"等关键词
 - **阶段二（用例生成）**：用户请求中包含 "需求正确"/"请生成测试用例"/"确认"等关键词 + 已确认的需求内容
@@ -31,28 +33,44 @@ description: 这项技能用于后端驱动的全流程测试用例设计：从 
 python3 --version && uv --version
 
 # 幂等安装依赖（已安装的包会自动跳过）
-uv pip install pymupdf pymupdf4llm python-docx reportlab
+uv pip install pymupdf pymupdf4llm python-docx md2pdf
 ```
 
-> **说明**：`pymupdf`和`pymupdf4llm`用于解析 PDF，`python-docx` 用于解析 DOCX，`reportlab` 用于后续生成 PDF 文档。
+> **说明**：`pymupdf`和`pymupdf4llm`用于解析 PDF，`python-docx` 用于解析 DOCX，`md2pdf` 用于后续将 Markdown 转换为 PDF 文件。
+>
+> **⚠️ Hermes Agent 环境依赖提示**：`uv pip install` 安装到当前 venv（如 `/opt/data/.venv`）。后续执行 Python 脚本时：
+> - **terminal** 方式：必须用 `/opt/data/.venv/bin/python3` 而非 `python3`（否则找不到 venv 中的包）
+> - **execute_code** 方式：默认使用系统 Python（不继承 venv），如需 venv 包需改用 `terminal` + 全路径
 
 ### 1.3 下载需求文档
 
 ```bash
 # 创建临时目录（如已存在则先清空）
-rm -rf "/tmp/test-case-design/{sessionId}/"
-mkdir -p /tmp/test-case-design/{sessionId}/
+rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
+mkdir -p /opt/data/tmp/test-case-design/{sessionId}/
 
 # 下载需求文档，根据 URL 后缀决定保存的文件名
 # 如果 URL 以 .docx 结尾，保存为 requirements.docx，否则保存为 requirements.pdf
 if [[ "{docUrl}" =~ \.docx$ ]]; then
-  curl -L -o "/tmp/test-case-design/{sessionId}/requirements.docx" "{docUrl}"
+  curl -L -o "/opt/data/tmp/test-case-design/{sessionId}/requirements.docx" "{docUrl}"
 else
-  curl -L -o "/tmp/test-case-design/{sessionId}/requirements.pdf" "{docUrl}"
+  curl -L -o "/opt/data/tmp/test-case-design/{sessionId}/requirements.pdf" "{docUrl}"
 fi
 ```
 
 > **注意**：如果 URL 无后缀或不匹配，默认按 PDF 处理。下载后检查文件是否存在及大小是否正常。
+>
+> **⚠️ 下载失败回退方案**：如果用户拒绝 `curl` + `terminal`（常见于 Hermes Agent），改用 Python `urllib.request.urlretrieve()` 通过 `execute_code` 或 `write_file` + `terminal` 方式下载：
+>
+> ```python
+> import os, urllib.request
+> from urllib.parse import quote
+> save_path = f"/opt/data/tmp/test-case-design/{session_id}/requirements.docx"
+> urllib.request.urlretrieve(quote(url, safe='/:?=&'), save_path)
+> print(f"Downloaded {os.path.getsize(save_path)} bytes")
+> ```
+>
+> 注意：URL 中的中文字符必须通过 `quote()` 编码。
 
 ### 1.4 解析需求文档并提取需求
 
@@ -65,7 +83,7 @@ fi
 # 也可以配合pymupdf4llm使用，效果更好
 python3 -c "
 import fitz
-doc = fitz.open('/tmp/test-case-design/{sessionId}/requirements.pdf')
+doc = fitz.open('/opt/data/tmp/test-case-design/{sessionId}/requirements.pdf')
 for page in doc:
     print(page.get_text())
 "
@@ -77,7 +95,7 @@ for page in doc:
 # 使用 python-docx 读取 DOCX 内容
 python3 -c "
 from docx import Document
-doc = Document('/tmp/test-case-design/{sessionId}/requirements.docx')
+doc = Document('/opt/data/tmp/test-case-design/{sessionId}/requirements.docx')
 for para in doc.paragraphs:
     print(para.text)
 # 同时提取表格内容
@@ -263,7 +281,7 @@ curl -X POST "{ip}:{port}/{服务名}/api/v1/testcase/save" \
 - 待澄清需求（用例设计过程中发现的需求模糊点、未明确边界、遗漏场景等）
 - 需求覆盖度评估
 
-生成方式见下方 **3.3 使用 reportlab 生成 PDF 文件**（与评审报告共用 PDF 生成逻辑）。
+生成方式见下方 **3.3 使用 md2pdf 生成 PDF 文件**（与评审报告共用 PDF 生成逻辑）。
 
 ### 3.2 生成「测试用例评审报告」
 
@@ -278,110 +296,84 @@ curl -X POST "{ip}:{port}/{服务名}/api/v1/testcase/save" \
 - 问题与改进建议
 - 评审结论
 
-生成方式见下方 **3.3 使用 reportlab 生成 PDF 文件**。
+生成方式见下方 **3.3 使用 md2pdf 生成 PDF 文件**。
 
-### 3.3 使用 reportlab 生成 PDF 文件
+### 3.3 使用 md2pdf 生成 PDF 文件
 
 本步骤为 3.1 和 3.2 中需要生成 PDF 时的具体操作指引。
 
-#### 3.3.1 检查中文字体
+使用 **md2pdf** 替代 reportlab 生成 PDF（md2pdf 将 Markdown 转为 HTML 后由 weasyprint 渲染为 PDF，无需手动处理中文字体注册等复杂问题）。
 
-```bash
-# 检查系统中是否有中文字体
-fc-list :lang=zh 2>/dev/null | head -5
+> **先决条件**：md2pdf 和 weasyprint 已在环境预装（详见 1.2 节）。
 
-# 如无中文字体，尝试常见路径
-ls /usr/share/fonts/ 2>/dev/null
-ls /usr/local/share/fonts/ 2>/dev/null
+#### 3.3.1 工作流程
+
+整体流程分两步：
+
+```
+生成 Markdown 内容（Python 脚本拼接字符串）
+    ↓
+调用 md2pdf 转换为 PDF（文件模式或 raw 模式）
 ```
 
-> 如果系统中无中文字体，指导用户安装（如 `apt install fonts-noto-cjk` 或下载字体文件），或在 Python 中指定 fallback 字体路径。
+**步骤 A：编写 Python 脚本，按模板内容拼接 Markdown 字符串**
 
-#### 3.3.2 生成 PDF
+按 `references/templates/` 中的对应模板结构，用 Python 拼接完整的 Markdown 字符串，包括：
+- 标题（`#`、`##`、`###`）
+- 段落（空行分隔）
+- 表格（标准 Markdown 表格语法）
+- 列表（`- ` 无序、`1. ` 有序）
+- 代码块（` ``` ` 包裹）
+- 引用（`> `）
+- 分隔线（`---`）
 
-使用 `reportlab` 生成 PDF 文件，内容基于对应模板的结构填充：
+**步骤 B：调用 md2pdf 转换为 PDF**
 
-```bash
-python3 -c "
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-from reportlab.lib import colors
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-import os
+```python
+from pathlib import Path
+from md2pdf.core import md2pdf
 
-# 注册中文字体（查找可用中文字体）
-zh_font_path = None
-candidate_paths = [
-    '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
-    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-    '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
-    '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
-]
-for p in candidate_paths:
-    if os.path.exists(p):
-        zh_font_path = p
-        break
+# 方式一：文件模式（将 Markdown 写入 .md 文件后再转换）
+with open('/opt/data/tmp/test-case-design/{sessionId}/文档.md', 'w', encoding='utf-8') as f:
+    f.write(markdown_content)
 
-if zh_font_path:
-    pdfmetrics.registerFont(TTFont('ChineseFont', zh_font_path))
-    font_name = 'ChineseFont'
-else:
-    # 尝试通过 fc-match 查找
-    import subprocess
-    result = subprocess.run(['fc-match', '-f', '%{file}', 'sans-serif:lang=zh'], capture_output=True, text=True)
-    font_path = result.stdout.strip()
-    if font_path and os.path.exists(font_path):
-        pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
-        font_name = 'ChineseFont'
-    else:
-        font_name = 'Helvetica'  # fallback，中文将无法正常显示
-
-# 构建文档
-doc = SimpleDocTemplate(
-    '/tmp/test-case-design/{sessionId}/output.pdf',
-    pagesize=A4,
-    topMargin=20*mm,
-    bottomMargin=20*mm,
-    leftMargin=20*mm,
-    rightMargin=20*mm
+md2pdf(
+    md=Path('/opt/data/tmp/test-case-design/{sessionId}/文档.md'),
+    pdf=Path('/opt/data/tmp/test-case-design/{sessionId}/输出文件.pdf'),
+    css=Path('references/templates/pdf-style.css')  # 可选，默认样式
 )
 
-styles = getSampleStyleSheet()
-zh_style = ParagraphStyle(
-    'ChineseStyle',
-    parent=styles['Normal'],
-    fontName=font_name,
-    fontSize=10,
-    leading=16,
-    spaceAfter=6
+# 方式二：raw 模式（免中间 .md 文件，推荐）
+md2pdf(
+    raw=markdown_content,                          # 直接传入 Markdown 字符串
+    pdf=Path('/opt/data/tmp/test-case-design/{sessionId}/输出文件.pdf'),
+    css=Path('references/templates/pdf-style.css')  # 可选
 )
-zh_title = ParagraphStyle(
-    'ChineseTitle',
-    parent=styles['Heading1'],
-    fontName=font_name,
-    fontSize=16,
-    spaceAfter=12
-)
-
-story = []
-# ... 按模板内容填充 story（标题、段落、表格等） ...
-story.append(Paragraph('文档标题', zh_title))
-story.append(Paragraph('内容段落...', zh_style))
-
-doc.build(story)
-print('PDF 生成成功')
-"
 ```
 
-> **说明**：上述脚本为框架示例，实际使用时需根据模板 `references/templates/` 中的内容结构完整填充所有章节。
+> **推荐方式二（raw 模式）**：减少一次文件写操作，且 Markdown 字符串中无需处理文件编码问题。
 
-#### 3.3.3 生成的文件
+#### 3.3.2 自定义样式
+
+项目提供了一个默认 CSS 样式文件 `references/templates/pdf-style.css`，已配置好中文排版、表格样式、页眉页脚等。如需自定义样式，可修改该 CSS 文件或在调用时传入自己的 CSS 路径。
+
+如果调用时不传 `css` 参数，md2pdf 会使用默认的无样式渲染（仍可正常显示中文，但表格无边框、排版较朴素）。**建议始终传入样式文件**。
+
+#### 3.3.3 Markdown 内容生成要点
+
+| 要点 | 说明 |
+|------|------|
+| **中文** | 直接写入字符串即可，无需任何额外配置 |
+| **表格** | 使用标准 Markdown 表格 `\| col1 \| col2 \|`，首行为表头 |
+| **换行** | 段落间空一行，表格内不要用复杂换行 |
+| **特殊字符** | `\|` 在表格内需转义为 `\\|`，`*` 和 `_` 可能会被解析为斜体/加粗标记 |
+| **代码块** | 使用三个反引号包裹，支持指定语言 |
+| **变量替换** | 在 Python 中用 f-string 或 `.format()` 将 `{sessionId}`、`{batchNo}` 等参数填入 |
+
+#### 3.3.4 生成的 PDF 文件
 
 | 文档类型 | 文件名 |
-|---------|-------|---------|
+|---------|-------|
 | 待澄清需求清单 | `待澄清需求清单_{batchNo}.pdf` |
 | 测试用例评审报告 | `测试用例评审报告_{batchNo}.pdf` |
 
@@ -392,9 +384,9 @@ print('PDF 生成成功')
 #### 步骤 2：上传待澄清需求清单
 
 ```bash
-if [ -f "/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" ]; then
+if [ -f "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" ]; then
   curl -X POST "{ip}/api/v1/file/upload?type=CHECKLIST&sessionId={sessionId}&batchNo={batchNo}" \
-    -F "file=@/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf"
+    -F "file=@/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf"
 fi
 ```
 
@@ -402,7 +394,7 @@ fi
 
 ```bash
 curl -X POST "{ip}/api/v1/file/upload?type=REPORT&sessionId={sessionId}&batchNo={batchNo}" \
-  -F "file=@/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf"
+  -F "file=@/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf"
 ```
 
 **接口说明**：
@@ -421,7 +413,7 @@ curl -X POST "{ip}/api/v1/file/upload?type=REPORT&sessionId={sessionId}&batchNo=
 ### 4.1 清理临时文件
 
 ```bash
-rm -rf "/tmp/test-case-design/{sessionId}/"
+rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 ```
 
 > **目标**：确保本地不残留 PDF、DOCX 和 MD 文件，保持本地环境干净。
@@ -471,7 +463,7 @@ rm -rf "/tmp/test-case-design/{sessionId}/"
 | 编号规则 | caseCode 格式 `[平台]_[模块]_[维度]_[序号]` | `references/templates/common-rules.md` 第三节 |
 | JSON 格式 | 按 API JSON Schema 输出，priority 为 int(0/1/2)，type 为 int(1-9) | `references/examples/format-spec.md` |
 | API 调用 | 先通过 Nacos 获取 IP，再调用接口 | `references/api-integration.md` |
-| 临时文件 | 统一放在 `/tmp/test-case-design/{sessionId}/`，流程结束后清理 | — |
+| 临时文件 | 统一放在 `/opt/data/tmp/test-case-design/{sessionId}/`，流程结束后清理 | — |
 | 文件解析 | PDF 用 `pymupdf`，DOCX 用 `python-docx`，用 `uv pip install` 幂等安装 | `references/core-capabilities/` |
 | 自查清单 | 生成用例后必须按对应检查清单自查 | `references/checklists/*.md` |
 
@@ -497,10 +489,17 @@ rm -rf "/tmp/test-case-design/{sessionId}/"
 | 文件 | 用途 |
 |------|------|
 | `references/templates/common-rules.md` | 通用规则（编号、优先级、测试类型分类） |
+| `references/templates/pdf-style.css` | PDF 默认样式（配合 md2pdf 使用） |
 | `references/examples/format-spec.md` | 输出格式规范（API JSON + Markdown 表格） |
 | `references/templates/clarification-checklist.md` | 待澄清需求清单模板 |
 | `references/templates/review-report.md` | 测试用例评审报告模板 |
 | `references/api-integration.md` | API 集成说明 |
+
+### 批量用例生成 (≥20 条场景)
+| 文件 | 用途 |
+|------|------|
+| `references/bulk-case-generation-pattern.md` | 大批量用例的代码生成模式：`tc()` 紧凑函数 + JSON 文件 + curl 上传 |
+| | 当预期用例数 ≥20 时应优先参考此模式，避免在 terminal heredoc 中传递大量复杂数据 |
 
 ### 检查清单
 | 文件 | 用途 |

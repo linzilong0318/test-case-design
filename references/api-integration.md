@@ -202,7 +202,7 @@ curl -X POST "{ip}/api/v1/file/upload?type=REPORT&sessionId={sessionId}&batchNo=
 |------|------|
 | 阶段一 | 准备环境（`uv pip install` 安装依赖），创建目录，下载 PDF 或 DOCX 到目录 |
 | 阶段二 | 可选：写入 JSON payload 文件用于 curl 上传 |
-| 阶段三 | 使用 reportlab 生成 PDF 文件（评审报告必生 + 待澄清清单按需），上传到后端 |
+| 阶段三 | 使用 md2pdf 生成 PDF 文件（评审报告必生 + 待澄清清单按需），上传到后端 |
 | 阶段四 | **统一清理**：`rm -rf /tmp/test-case-design/{sessionId}/` |
 
 ### 4.3 清理命令
