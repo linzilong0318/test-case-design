@@ -28,6 +28,9 @@ description: 这项技能用于后端驱动的全流程测试用例设计：从 
 
 5. **API 响应过滤**：后端接口返回的响应中如包含 Token、密码、密钥等敏感字段，展示给用户前必须脱敏。
 
+6. **禁止输出业务ID**：例如`sessionId` `project_id` `user_id` `business_user_id`不允许展示给用户
+
+
 ---
 
 ## 临时文件管理规范
