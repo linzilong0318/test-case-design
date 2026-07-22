@@ -9,7 +9,54 @@ description: 这项技能用于后端驱动的全流程测试用例设计：从 
 
 > **⚠️ Hermes Agent 环境前置要求**：如果运行在 Hermes Agent 下，**必须先加载 `hermes-env-pitfalls` skill**。该 skill 解决了已知的 `/tmp/` 写文件拒绝、数字自动替换、heredoc 字节损坏等问题。本 skill 已采用 `/opt/data/tmp/` 作为默认临时路径以兼容该环境。
 
-**入口判断**：根据用户请求内容，自动识别当前处于哪个阶段：
+---
+
+## ⚠️ 安全规则（最高优先级，必须遵守）
+
+> **这些规则适用于整个 skill 执行过程，任何情况下不得违反。**
+
+1. **禁止输出环境变量值**：任何时候都**不得**向用户展示以下环境变量的值：
+   - `NACOS_USERNAME`、`NACOS_PASSWORD`、`NACOS_SERVER_ADDRESSES`、`NACOS_NAMESPACE`
+   - 任何包含 `TOKEN`、`PASSWORD`、`SECRET`、`KEY`、`CREDENTIAL` 的环境变量
+   - 如调试需要提及，仅可说"已从环境变量读取"，不得展示具体值
+
+2. **脚本输出过滤**：执行 Python/Shell 脚本后，如果脚本输出中包含敏感变量值，**必须在展示给用户前过滤或截断**（仅保留前 4 个字符 + `***`）。
+
+3. **curl 命令脱敏**：如果必须展示 curl 或 API 调用命令，将 Token/密码/认证信息替换为 `{REDACTED}`。
+
+4. **日志脱敏**：Python 脚本中打印环境变量时，仅打印变量名，不打印值；如需打印值做调试，仅打印前 4 字符 + `***`。
+
+5. **API 响应过滤**：后端接口返回的响应中如包含 Token、密码、密钥等敏感字段，展示给用户前必须脱敏。
+
+---
+
+## 临时文件管理规范
+
+> **所有临时文件必须统一存放在 `/opt/data/tmp/test-case-design/{sessionId}/` 目录下，流程结束后统一清理。**
+
+### 目录结构
+
+```
+/opt/data/tmp/test-case-design/{sessionId}/
+├── requirements.pdf                  # 阶段一下载的需求文档
+├── requirements.docx                 # 阶段一下载的需求文档（DOCX 格式时）
+├── cases_payload.json                # 阶段二生成的用例 JSON（持久化，上传失败可重试）
+├── 待澄清需求清单_{batchNo}.pdf       # 阶段三生成的待澄清需求清单
+├── 测试用例评审报告_{batchNo}.pdf     # 阶段三生成的测试用例评审报告
+└── scripts/                          # 临时 Python 脚本（如有，必须放在此子目录下）
+```
+
+### 关键规则
+
+- **严禁**在 `/opt/data/tmp/test-case-design/{sessionId}/` **以外的位置**创建临时 Python 脚本
+- 如确需创建临时脚本，必须写入 `{sessionId}/scripts/` 子目录
+- 阶段四执行 `rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"` 统一清理，确保不残留任何文件
+
+---
+
+## 入口判断
+
+根据用户请求内容，自动识别当前处于哪个阶段：
 - **阶段一（需求获取）**：用户请求中包含 PDF/DOCX 下载链接 + "理解并整理需求"/"下载"等关键词
 - **阶段二（用例生成）**：用户请求中包含 "需求正确"/"请生成测试用例"/"确认"等关键词 + 已确认的需求内容
 
@@ -44,33 +91,30 @@ uv pip install pymupdf pymupdf4llm python-docx md2pdf
 
 ### 1.3 下载需求文档
 
-```bash
-# 创建临时目录（如已存在则先清空）
-rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
-mkdir -p /opt/data/tmp/test-case-design/{sessionId}/
+**使用标准下载脚本**（内置重试 + 中文 URL 编码，一次即可成功）：
 
-# 下载需求文档，根据 URL 后缀决定保存的文件名
-# 如果 URL 以 .docx 结尾，保存为 requirements.docx，否则保存为 requirements.pdf
-if [[ "{docUrl}" =~ \.docx$ ]]; then
-  curl -L -o "/opt/data/tmp/test-case-design/{sessionId}/requirements.docx" "{docUrl}"
-else
-  curl -L -o "/opt/data/tmp/test-case-design/{sessionId}/requirements.pdf" "{docUrl}"
-fi
+```bash
+# 创建临时目录
+rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
+mkdir -p "/opt/data/tmp/test-case-design/{sessionId}/"
+
+# 确定输出文件名（根据 URL 后缀）
+# 如果 URL 以 .docx 结尾，输出文件名为 requirements.docx，否则为 requirements.pdf
+OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx}"
+
+# 执行下载脚本（内置 3 次重试 + 指数退避，无需额外处理）
+python3 scripts/download_requirements.py \
+  --url "{docUrl}" \
+  --output "$OUTPUT_FILE" \
+  --session-id "{sessionId}"
 ```
 
-> **注意**：如果 URL 无后缀或不匹配，默认按 PDF 处理。下载后检查文件是否存在及大小是否正常。
->
-> **⚠️ 下载失败回退方案**：如果用户拒绝 `curl` + `terminal`（常见于 Hermes Agent），改用 Python `urllib.request.urlretrieve()` 通过 `execute_code` 或 `write_file` + `terminal` 方式下载：
->
-> ```python
-> import os, urllib.request
-> from urllib.parse import quote
-> save_path = f"/opt/data/tmp/test-case-design/{session_id}/requirements.docx"
-> urllib.request.urlretrieve(quote(url, safe='/:?=&'), save_path)
-> print(f"Downloaded {os.path.getsize(save_path)} bytes")
-> ```
->
-> 注意：URL 中的中文字符必须通过 `quote()` 编码。
+> **脚本说明**：`scripts/download_requirements.py` 自动处理以下事项：
+> - 从 URL 自动识别文件格式（`.pdf` / `.docx`）
+> - 中文 URL 自动 `urllib.parse.quote()` 编码
+> - 3 次重试 + 指数退避（1s / 2s / 4s）
+> - 下载后校验文件大小 > 0
+> - 仅依赖 Python 标准库 `urllib.request`
 
 ### 1.4 解析需求文档并提取需求
 
@@ -79,8 +123,6 @@ fi
 **方式 A：PDF 文件（`requirements.pdf`）**
 
 ```bash
-# 使用 pymupdf 读取 PDF 内容
-# 也可以配合pymupdf4llm使用，效果更好
 python3 -c "
 import fitz
 doc = fitz.open('/opt/data/tmp/test-case-design/{sessionId}/requirements.pdf')
@@ -92,7 +134,6 @@ for page in doc:
 **方式 B：DOCX 文件（`requirements.docx`）**
 
 ```bash
-# 使用 python-docx 读取 DOCX 内容
 python3 -c "
 from docx import Document
 doc = Document('/opt/data/tmp/test-case-design/{sessionId}/requirements.docx')
@@ -111,7 +152,7 @@ for table in doc.tables:
    - 文档中涉及的前端平台类型（移动App/小程序/H5/桌面/PC Web）→ 标记需要加载对应平台文件
    - 未命中上述类型 → 默认加载 `functional-testing.md`
 
-### 1.5 整理需求列表
+### 1.5 整理需求列表（不允许跳过这一步）
 
 将需求整理为以下结构化格式返回给用户确认：
 
@@ -219,51 +260,60 @@ for table in doc.tables:
 | 功能测试 + 平台 | `references/checklists/common-checklist.md` + `references/checklists/{平台}-checklist.md` |
 | 功能测试（无平台） | `references/checklists/common-checklist.md` |
 
-### 2.5 组装 API 格式的用例 JSON
+### 2.5 组装 API 格式的用例 JSON 并持久化
 
 按 `references/examples/format-spec.md` 中定义的 **API JSON 格式** 组装用例。
 
-**生成 batchNo**：使用当前时间，格式 `yyyyMMddHHmmssSSS`（17位数字字符串），如 `20260709143025123`。
+**生成 batchNo**：使用当前时间，格式 `yyyyMMddHHmmssSSS`（17位数字字符串），如 `20260709143025123`。同一批次所有用例使用**相同的 batchNo**。
 
-同一批次所有用例使用**相同的 batchNo**。
+**⚠️ 必须持久化到本地文件**（上传失败时可重试，无需重新生成）：
+
+使用 Python 脚本将用例写入 JSON 文件：
+
+```python
+import json, os
+from datetime import datetime
+
+SESSION_ID = "{sessionId}"
+BATCH_NO = datetime.now().strftime("%Y%m%d%H%M%S%f")[:17]
+
+cases = [
+    # ... 按 format-spec.md 组装的用例列表
+]
+
+payload = {"sessionId": SESSION_ID, "cases": cases}
+
+# 持久化到临时目录
+out_dir = f"/opt/data/tmp/test-case-design/{SESSION_ID}"
+os.makedirs(out_dir, exist_ok=True)
+out_path = f"{out_dir}/cases_payload.json"
+with open(out_path, "w", encoding="utf-8") as f:
+    json.dump(payload, f, ensure_ascii=False, indent=2)
+
+print(f"总用例数: {len(cases)}")
+print(f"JSON 已保存: {out_path}")
+```
+
+> **说明**：JSON 文件保存在临时目录中，上传失败时可直接从文件重试，避免 LLM 重新生成用例产生幻觉（遗漏/修改用例内容）。
+
+> **大批量用例（≥20 条）**：参考 `references/bulk-case-generation-pattern.md` 中的 `tc()` 辅助函数模式，一行一条用例，快速录入。
 
 ### 2.6 上传用例到后端
 
-#### 步骤 1：通过 Nacos 获取后端服务 IP
-
-调用已有的 Nacos skill，获取注册在 Nacos 上的后端服务 IP，port，服务名等信息。
-
-#### 步骤 2：调用用例上传接口
+**使用标准上传脚本**（自动完成 Nacos 服务发现 + API 调用）：
 
 ```bash
-curl -X POST "{ip}:{port}/{服务名}/api/v1/testcase/save" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "{sessionId}",
-    "cases": [
-      {
-        "caseCode": "TC_ENV_MGM_001",
-        "batchNo": "{batchNo}",
-        "title": "验证添加环境输入非法字符时校验拦截",
-        "type": 1,
-        "module": "环境管理",
-        "subModule": "添加环境",
-        "priority": 0,
-        "preconditions": "1. 用户已成功登录系统\n2. 具备环境管理模块的编辑权限",
-        "steps": "1. 点击「添加环境」按钮打开弹窗\n2. 在环境名称输入框中输入特殊字符「@#￥%」\n3. 点击底部的「保存」按钮",
-        "expectedResults": "1. 弹窗正常响应打开\n2. 输入框失去焦点时或点击保存时，输入框下方高亮红色提示「名称格式不正确」\n3. 表单拦截，不触发落库请求"
-      }
-    ]
-  }'
+python3 scripts/upload_cases.py \
+  --payload-file "/opt/data/tmp/test-case-design/{sessionId}/cases_payload.json"
 ```
 
-**接口说明**：
-- 方法：POST
-- Content-Type：application/json
-- RequestBody 字段：
-  - `sessionId`（string）：会话标识
-  - `cases`（array）：用例列表，每项包含 caseCode、batchNo、title、type、module、subModule（可选）、priority、preconditions、steps、expectedResults
-- 响应格式：`{ "success": true/false, "code": "00000", "message": "", "data": true/false }`
+> **脚本说明**：`scripts/upload_cases.py` 自动完成：
+> - 从环境变量读取 Nacos 配置（`NACOS_SERVER_ADDRESSES`、`NACOS_NAMESPACE`、`NACOS_USERNAME`、`NACOS_PASSWORD`、`BACKEND_SERVICE_NAME`）
+> - 通过 Nacos 发现健康的后端服务实例
+> - 读取本地 JSON 文件并 POST 到 `/api/v1/testcase/save`
+> - 打印上传结果
+>
+> **上传失败处理**：如果上传失败，检查错误信息后可直接重新执行上述命令（JSON 文件已持久化），无需重新生成用例。
 
 ---
 
@@ -286,7 +336,6 @@ curl -X POST "{ip}:{port}/{服务名}/api/v1/testcase/save" \
 ### 3.2 生成「测试用例评审报告」
 
 对生成的用例进行自我评审，按 `references/templates/review-report.md` 模板内容生成 PDF 文档。
-
 
 **必须包含**：
 - 基本信息（batchNo、sessionId、评审时间）
@@ -313,7 +362,7 @@ curl -X POST "{ip}:{port}/{服务名}/api/v1/testcase/save" \
 ```
 生成 Markdown 内容（Python 脚本拼接字符串）
     ↓
-调用 md2pdf 转换为 PDF（文件模式或 raw 模式）
+调用 md2pdf 转换为 PDF（推荐 raw 模式）
 ```
 
 **步骤 A：编写 Python 脚本，按模板内容拼接 Markdown 字符串**
@@ -333,25 +382,15 @@ curl -X POST "{ip}:{port}/{服务名}/api/v1/testcase/save" \
 from pathlib import Path
 from md2pdf.core import md2pdf
 
-# 方式一：文件模式（将 Markdown 写入 .md 文件后再转换）
-with open('/opt/data/tmp/test-case-design/{sessionId}/文档.md', 'w', encoding='utf-8') as f:
-    f.write(markdown_content)
-
-md2pdf(
-    md=Path('/opt/data/tmp/test-case-design/{sessionId}/文档.md'),
-    pdf=Path('/opt/data/tmp/test-case-design/{sessionId}/输出文件.pdf'),
-    css=Path('references/templates/pdf-style.css')  # 可选，默认样式
-)
-
-# 方式二：raw 模式（免中间 .md 文件，推荐）
+# 推荐：raw 模式（免中间 .md 文件）
 md2pdf(
     raw=markdown_content,                          # 直接传入 Markdown 字符串
     pdf=Path('/opt/data/tmp/test-case-design/{sessionId}/输出文件.pdf'),
-    css=Path('references/templates/pdf-style.css')  # 可选
+    css=Path('references/templates/pdf-style.css')  # 可选，默认样式
 )
 ```
 
-> **推荐方式二（raw 模式）**：减少一次文件写操作，且 Markdown 字符串中无需处理文件编码问题。
+> **PDF 文件保存路径**：必须保存在 `/opt/data/tmp/test-case-design/{sessionId}/` 目录下，确保阶段四能被统一清理。
 
 #### 3.3.2 自定义样式
 
@@ -379,30 +418,31 @@ md2pdf(
 
 ### 3.4 上传文档到后端
 
-#### 步骤 1：通过 Nacos 获取后端服务 IP（如阶段二已获取可复用）
-
-#### 步骤 2：上传待澄清需求清单
+**使用标准上传脚本**（自动完成 Nacos 服务发现 + 文件上传）：
 
 ```bash
+# 上传待澄清需求清单（如已生成）
 if [ -f "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" ]; then
-  curl -X POST "{ip}/api/v1/file/upload?type=CHECKLIST&sessionId={sessionId}&batchNo={batchNo}" \
-    -F "file=@/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf"
+  python3 scripts/upload_file.py \
+    --file "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" \
+    --session-id "{sessionId}" \
+    --batch-no "{batchNo}" \
+    --type CHECKLIST
 fi
+
+# 上传测试用例评审报告
+python3 scripts/upload_file.py \
+  --file "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf" \
+  --session-id "{sessionId}" \
+  --batch-no "{batchNo}" \
+  --type REPORT
 ```
 
-#### 步骤 3：上传测试用例评审报告
-
-```bash
-curl -X POST "{ip}/api/v1/file/upload?type=REPORT&sessionId={sessionId}&batchNo={batchNo}" \
-  -F "file=@/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf"
-```
-
-**接口说明**：
-- 方法：POST
-- Content-Type：multipart/form-data
-- Query 参数：`type`（CHECKLIST 或 REPORT）、`sessionId`、`batchNo`
-- Form-data：`file`（文件字段）
-- 响应格式：`{ "success": true/false, "code": "", "message": "", "data": { "sessionId": "", "fileName": "", "relativePath": "", "url": "", "type": "" } }`
+> **脚本说明**：`scripts/upload_file.py` 自动完成：
+> - 从环境变量读取 Nacos 配置
+> - 通过 Nacos 发现健康的后端服务实例
+> - multipart/form-data 上传 PDF 文件到 `/api/v1/file/upload`
+> - 打印上传结果（含文件访问链接）
 
 > **重要**：记录上传接口返回的 `data.url`，后续总结中需要展示给用户。
 
@@ -416,7 +456,7 @@ curl -X POST "{ip}/api/v1/file/upload?type=REPORT&sessionId={sessionId}&batchNo=
 rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 ```
 
-> **目标**：确保本地不残留 PDF、DOCX 和 MD 文件，保持本地环境干净。
+> **目标**：统一清理 `/opt/data/tmp/test-case-design/{sessionId}/` 整个目录，确保不残留 PDF、DOCX、JSON 和临时脚本文件，保持本地环境干净。
 
 ### 4.2 返回总结
 
@@ -459,15 +499,26 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 
 | 规则 | 说明 | 参考文件 |
 |------|------|---------|
+| 安全规则 | 禁止输出 NACOS_* 等环境变量值，敏感字段必须脱敏 | 见顶部 ⚠️ 安全规则 |
+| 临时文件 | 所有临时文件统一放在 `/opt/data/tmp/test-case-design/{sessionId}/`，流程结束统一清理 | 见顶部 临时文件管理规范 |
 | 步骤必须具体 | 测试步骤中必须给出具体输入值/参数，不得使用描述性语言 | `references/templates/common-rules.md` 第零节 |
 | 编号规则 | caseCode 格式 `[平台]_[模块]_[维度]_[序号]` | `references/templates/common-rules.md` 第三节 |
 | JSON 格式 | 按 API JSON Schema 输出，priority 为 int(0/1/2)，type 为 int(1-9) | `references/examples/format-spec.md` |
-| API 调用 | 先通过 Nacos 获取 IP，再调用接口 | `references/api-integration.md` |
-| 临时文件 | 统一放在 `/opt/data/tmp/test-case-design/{sessionId}/`，流程结束后清理 | — |
+| 用例持久化 | 生成后先写入 `cases_payload.json`，再上传；失败可直接重试 | `scripts/upload_cases.py` |
+| Nacos 服务发现 | 已整合到 `scripts/discover_and_call.py`，上传脚本自动调用 | `scripts/` |
 | 文件解析 | PDF 用 `pymupdf`，DOCX 用 `python-docx`，用 `uv pip install` 幂等安装 | `references/core-capabilities/` |
 | 自查清单 | 生成用例后必须按对应检查清单自查 | `references/checklists/*.md` |
+| 下载脚本 | 使用 `scripts/download_requirements.py`（内置重试+URL编码） | `scripts/download_requirements.py` |
 
 ## 参考文件索引
+
+### 脚本文件
+| 文件 | 用途 |
+|------|------|
+| `scripts/download_requirements.py` | 统一的需求文档下载脚本（内置重试 + 中文 URL 编码） |
+| `scripts/discover_and_call.py` | Nacos 服务发现 + REST API 调用通用模块（可导入复用） |
+| `scripts/upload_cases.py` | 用例上传脚本（从 JSON 文件读取，自动发现服务） |
+| `scripts/upload_file.py` | 文件上传脚本（multipart/form-data，自动发现服务） |
 
 ### 能力文件
 | 文件 | 用途 |
@@ -498,8 +549,7 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 ### 批量用例生成 (≥20 条场景)
 | 文件 | 用途 |
 |------|------|
-| `references/bulk-case-generation-pattern.md` | 大批量用例的代码生成模式：`tc()` 紧凑函数 + JSON 文件 + curl 上传 |
-| | 当预期用例数 ≥20 时应优先参考此模式，避免在 terminal heredoc 中传递大量复杂数据 |
+| `references/bulk-case-generation-pattern.md` | 大批量用例的代码生成模式：`tc()` 紧凑函数 + JSON 文件持久化 + 上传 |
 
 ### 检查清单
 | 文件 | 用途 |

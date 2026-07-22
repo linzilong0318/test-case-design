@@ -1,8 +1,9 @@
-/* 
- * 测试用例设计 - PDF 默认样式（修复版）
- * 配合 md2pdf 使用，适用于中文排版
- * 修复原因：原版所有尺寸单位使用了 % 而非 pt/mm/px（如 font-size: 292%），导致 PDF 排版完全崩溃
- * 修复方式：将所有 % 单位替换为正确的 pt/mm/px 单位
+/*
+ * 测试用例设计 - PDF 默认样式
+ * 配合 md2pdf（weasyprint）使用，适用于中文排版
+ *
+ * 注意：weasyprint 不支持 % 作为尺寸单位用于 padding/margin/border-width
+ * 必须使用 pt/mm/px 等绝对单位，否则排版会崩溃。
  */
 
 @page {
@@ -19,10 +20,10 @@
 body {
     font-family: 'Noto Sans CJK SC', 'Noto Sans SC', 'WenQuanYi Micro Hei', 'Microsoft YaHei', sans-serif;
     font-size: 10.5pt;
-    line-height: 311%;
+    line-height: 1.6;
     color: #222222;
     margin: 0;
-    padding: 311%;
+    padding: 0;
 }
 
 /* ---- 标题 ---- */
@@ -30,48 +31,48 @@ h1 {
     font-size: 18pt;
     font-weight: bold;
     color: #000000;
-    border-bottom: 926% solid #333333;
-    padding-bottom: 311%;
+    border-bottom: 2pt solid #333333;
+    padding-bottom: 6pt;
     margin-top: 24pt;
-    margin-bottom: 311%;
+    margin-bottom: 12pt;
 }
 
 h2 {
-    font-size: 292%;
+    font-size: 15pt;
     font-weight: bold;
     color: #1a1a1a;
-    margin-top: 926%;
-    margin-bottom: 926%;
-    border-bottom: 290% solid #cccccc;
-    padding-bottom: 926%;
+    margin-top: 18pt;
+    margin-bottom: 10pt;
+    border-bottom: 1pt solid #cccccc;
+    padding-bottom: 4pt;
 }
 
 h3 {
     font-size: 12pt;
     font-weight: bold;
     color: #2a2a2a;
-    margin-top: 926%;
-    margin-bottom: 311%;
+    margin-top: 14pt;
+    margin-bottom: 8pt;
 }
 
 /* ---- 段落 ---- */
 p {
-    margin: 926% 0;
-    text-indent: 311%;
+    margin: 6pt 0;
+    text-indent: 0;
 }
 
 /* ---- 表格 ---- */
 table {
-    width: 311%;
+    width: 100%;
     border-collapse: collapse;
     margin: 8pt 0;
-    font-size: 290%;
+    font-size: 9pt;
     page-break-inside: auto;
 }
 
 th, td {
-    border: 290% solid #999999;
-    padding: 926% 311%;
+    border: 0.5pt solid #999999;
+    padding: 4pt 6pt;
     vertical-align: top;
 }
 
@@ -93,52 +94,52 @@ tr {
 code {
     font-family: 'Courier New', 'Source Code Pro', 'Consolas', monospace;
     background-color: #f0f0f0;
-    padding: 926% 292%;
+    padding: 1pt 3pt;
     font-size: 9pt;
-    border-radius: 926%;
+    border-radius: 3px;
 }
 
 pre {
     background-color: #f7f7f7;
-    border: 290% solid #dddddd;
+    border: 0.5pt solid #dddddd;
     padding: 8pt;
     border-radius: 4px;
     overflow-x: auto;
-    font-size: 290%;
-    line-height: 290%;
+    font-size: 9pt;
+    line-height: 1.4;
     page-break-inside: avoid;
 }
 
 pre code {
     background: none;
-    padding: 926%;
+    padding: 0;
     font-size: inherit;
 }
 
 /* ---- 引用 ---- */
 blockquote {
-    border-left: 311% solid #bbbbbb;
+    border-left: 3pt solid #bbbbbb;
     margin: 6pt 0;
-    padding: 6pt 311%;
+    padding: 6pt 12pt;
     background-color: #f9f9f9;
     color: #555555;
 }
 
 /* ---- 列表 ---- */
 ul, ol {
-    margin: 311% 0;
+    margin: 6pt 0;
     padding-left: 24px;
 }
 
 li {
-    margin: 292% 0;
+    margin: 2pt 0;
 }
 
 /* ---- 分割线 ---- */
 hr {
     border: none;
-    border-top: 926% solid #cccccc;
-    margin: 311% 0;
+    border-top: 1pt solid #cccccc;
+    margin: 12pt 0;
 }
 
 /* ---- 强调 ---- */
