@@ -88,7 +88,7 @@ mkdir -p "/opt/data/tmp/test-case-design/{sessionId}/"
 OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx}"
 
 # 执行下载脚本（内置 3 次重试 + 指数退避，无需额外处理）
-/opt/data/.venv/python3 scripts/download_requirements.py \
+/opt/data/.venv/bin/python3 scripts/download_requirements.py \
   --url "{docUrl}" \
   --output "$OUTPUT_FILE" \
   --session-id "{sessionId}"
@@ -101,7 +101,7 @@ OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx
 **方式 A：PDF 文件（`requirements.pdf`）**
 
 ```bash
-python3 -c "
+/opt/data/.venv/bin/python3 -c "
 import fitz
 doc = fitz.open('/opt/data/tmp/test-case-design/{sessionId}/requirements.pdf')
 for page in doc:
@@ -112,7 +112,7 @@ for page in doc:
 **方式 B：DOCX 文件（`requirements.docx`）**
 
 ```bash
-python3 -c "
+/opt/data/.venv/bin/python3 -c "
 from docx import Document
 doc = Document('/opt/data/tmp/test-case-design/{sessionId}/requirements.docx')
 for para in doc.paragraphs:
@@ -244,37 +244,7 @@ for table in doc.tables:
 
 **生成 batchNo**：使用当前时间，格式 `yyyyMMddHHmmssSSS`（17位数字字符串），如 `20260709143025123`。同一批次所有用例使用**相同的 batchNo**。
 
-**⚠️ 必须持久化到本地文件**（上传失败时可重试，无需重新生成）：
-
-使用 Python 脚本将用例写入 JSON 文件：
-
-```python
-import json, os
-from datetime import datetime
-
-SESSION_ID = "{sessionId}"
-BATCH_NO = datetime.now().strftime("%Y%m%d%H%M%S%f")[:17]
-
-cases = [
-    # ... 按 format-spec.md 组装的用例列表
-]
-
-payload = {"sessionId": SESSION_ID, "cases": cases}
-
-# 持久化到临时目录
-out_dir = f"/opt/data/tmp/test-case-design/{SESSION_ID}"
-os.makedirs(out_dir, exist_ok=True)
-out_path = f"{out_dir}/cases_payload.json"
-with open(out_path, "w", encoding="utf-8") as f:
-    json.dump(payload, f, ensure_ascii=False, indent=2)
-
-print(f"总用例数: {len(cases)}")
-print(f"JSON 已保存: {out_path}")
-```
-
-> **说明**：JSON 文件保存在临时目录中，上传失败时可直接从文件重试，避免 LLM 重新生成用例产生幻觉（遗漏/修改用例内容）。
-
-> **大批量用例（≥20 条）**：参考 `references/bulk-case-generation-pattern.md` 中的 `tc()` 辅助函数模式，一行一条用例，快速录入。
+**⚠️ 必须持久化到本地文件:** `/opt/data/tmp/test-case-design/{SESSION_ID}/cases_payload.json`：
 
 ### 2.6 上传用例到后端
 
@@ -524,12 +494,6 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 | `references/examples/format-spec.md` | 输出格式规范（API JSON + Markdown 表格） |
 | `references/templates/clarification-checklist.md` | 待澄清需求清单模板 |
 | `references/templates/review-report.md` | 测试用例评审报告模板 |
-| `references/api-integration.md` | API 集成说明 |
-
-### 批量用例生成 (≥20 条场景)
-| 文件 | 用途 |
-|------|------|
-| `references/bulk-case-generation-pattern.md` | 大批量用例的代码生成模式：`tc()` 紧凑函数 + JSON 文件持久化 + 上传 |
 
 ### 检查清单
 | 文件 | 用途 |
