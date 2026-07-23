@@ -74,27 +74,9 @@ description: 这项技能用于后端驱动的全流程测试用例设计：从 
 - `sessionId`：会话标识（用户明确告知的 "sessionId 是 xxx"）
 - `fileFormat`：根据 URL 后缀自动识别文件格式（`.pdf` 或 `.docx`），如无后缀以用户说明为准
 
-### 1.2 环境准备
+### 1.2 下载需求文档
 
-检查并安装依赖包（检查下所有uv的虚拟环境中是否已经安装了）：
-
-```bash
-# 检查 python3 和 uv 是否可用
-python3 --version && uv --version
-
-# 幂等安装依赖（已安装的包会自动跳过）
-uv pip install pymupdf pymupdf4llm python-docx md2pdf
-```
-
-> **说明**：`pymupdf`和`pymupdf4llm`用于解析 PDF，`python-docx` 用于解析 DOCX，`md2pdf` 用于后续将 Markdown 转换为 PDF 文件。
->
-> **⚠️ Hermes Agent 环境依赖提示**：`uv pip install` 安装到当前 venv（如 `/opt/data/.venv`）。后续执行 Python 脚本时：
-> - **terminal** 方式：必须用 `/opt/data/.venv/bin/python3` 而非 `python3`（否则找不到 venv 中的包）
-> - **execute_code** 方式：默认使用系统 Python（不继承 venv），如需 venv 包需改用 `terminal` + 全路径
-
-### 1.3 下载需求文档
-
-**使用标准下载脚本**（内置重试 + 中文 URL 编码，一次即可成功）：
+**terminal工具执行标准下载脚本**：
 
 ```bash
 # 创建临时目录
@@ -106,18 +88,11 @@ mkdir -p "/opt/data/tmp/test-case-design/{sessionId}/"
 OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx}"
 
 # 执行下载脚本（内置 3 次重试 + 指数退避，无需额外处理）
-python3 scripts/download_requirements.py \
+/opt/data/.venv/python3 scripts/download_requirements.py \
   --url "{docUrl}" \
   --output "$OUTPUT_FILE" \
   --session-id "{sessionId}"
 ```
-
-> **脚本说明**：`scripts/download_requirements.py` 自动处理以下事项：
-> - 从 URL 自动识别文件格式（`.pdf` / `.docx`）
-> - 中文 URL 自动 `urllib.parse.quote()` 编码
-> - 3 次重试 + 指数退避（1s / 2s / 4s）
-> - 下载后校验文件大小 > 0
-> - 仅依赖 Python 标准库 `urllib.request`
 
 ### 1.4 解析需求文档并提取需求
 
@@ -378,6 +353,8 @@ python3 scripts/upload_cases.py \
 - 代码块（` ``` ` 包裹）
 - 引用（`> `）
 - 分隔线（`---`）
+
+**注意**：涉及时间，一律转成东八区的时间
 
 **步骤 B：调用 md2pdf 转换为 PDF**
 

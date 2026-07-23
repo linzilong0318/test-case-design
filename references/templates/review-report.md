@@ -15,7 +15,7 @@
 |------|------|
 | 批次号 | {batchNo} |
 | Session ID | {sessionId} |
-| 评审时间 | {yyyy-MM-dd HH:mm:ss} |
+| 评审时间 | {yyyy-MM-dd HH:mm:ss} 必须是东八区时间|
 | 评审方式 | AI 自审 |
 
 ---
