@@ -1,6 +1,6 @@
 ## Description
 
-这项技能帮助用户完成后端驱动的全流程测试用例设计：从 PDF/DOCX 需求文档下载与解析、需求整理与确认、测试用例生成与 API 上传、评审文档（待澄清需求清单 + 测试用例评审报告）生成与上传，到最终总结。涵盖功能测试、接口测试、AI Agent 测试、兼容性测试、UI 测试、联动测试、路由测试及多平台专项测试（移动端/小程序/H5/桌面/PC Web）。仅专注于编写测试用例，不涉及测试计划、测试策略或自动化脚本。
+这项技能帮助用户完成功能测试用例全流程设计：从 PDF/DOCX 需求文档下载与解析、8 维度需求分析、测试点提取、用例编写与评审，到 API JSON 上传与文档生成。全程基于业务方方法论，涵盖需求分析 8 维度检查、测试点提取 8 维度扫描、8 种测试设计方法、表单场景设计规则、集成场景设计，以及 4 维度用例评审（覆盖率 ≥98% 循环通过）。仅专注于编写测试用例，不涉及测试计划、测试策略或自动化脚本。
 
 This skill is ready for commercial/non-commercial use.
 
@@ -14,55 +14,43 @@ MIT-0
 
 ## Use Case
 
-Developers, QA engineers, and product teams use this Chinese-language skill for backend-driven end-to-end test case design: downloading and parsing requirement PDFs, extracting and confirming requirements, generating test cases in API-aligned JSON format, uploading test cases to backend APIs, generating review documents (clarification checklist + review report), uploading documents, and providing a final summary. Supports functional testing, API testing, AI Agent testing, and multi-platform scenarios (Mobile App, Mini Program, H5, Desktop, PC Web). Only for test-case design — not test strategy, penetration testing, load testing, or automation script generation.
+- 从 PDF/DOCX 需求文档下载到最终测试用例上传的全流程自动化
+- 需求分析阶段：8 维度系统检查（功能完整性、逻辑一致性、边界清晰度、可测试性、数据完整性、异常处理、依赖关系、性能要求），有待澄清问题时强制停止等待确认
+- 测试点提取阶段：8 维度提取测试点，P0-P3 优先级 + 风险等级评估，严格标注需求来源
+- 用例编写阶段：8 种测试设计方法 + 表单规则（完整正例、清空非必填等）+ 集成场景设计
+- 用例评审阶段：4 维度评审（完整性、准确性、有效性、可执行性），覆盖率 ≥98%，循环直到通过，支持豁免机制
+- API JSON 上传至后端服务，MD 转 PDF 文档生成与上传
+- 统一临时文件管理和安全脱敏
 
-### Deployment Geography for Use
+## Features
 
-Global
+- PDF/DOCX 需求文档下载与解析（内置重试+中文 URL 编码）
+- 8 维度需求分析框架 + 强制停止确认机制
+- 8 维度测试点提取 + P0-P3 优先级/风险评估
+- 8 种测试设计方法（等价类、边界值、判定表、因果图、状态迁移、场景法、正交试验、错误推测）
+- 表单场景设计规则（完整正例、编辑清空等）+ 集成场景设计
+- 4 维度用例评审 + 覆盖率 ≥98% + 循环通过 + 豁免机制
+- API JSON 格式输出 + Nacos 服务发现上传
+- 两步法 PDF 文档生成（MD → md2pdf 转换，消除 f-string 错误）
+- Session 串联多轮对话，批量加解密 sessionId
+- 严格的安全脱敏规则（环境变量、Token、业务 ID）
+- Hermes Agent 环境兼容
 
-## Known Risks and Mitigations
+## FAQ
 
-- **Risk:** Generated or example test cases may include sample usernames, passwords, bearer tokens, or API keys.
-  **Mitigation:** Replace sample credentials and tokens with placeholders before sharing or storing generated test cases.
-- **Risk:** The skill downloads requirement PDFs/DOCX and generates temporary files locally.
-  **Mitigation:** All temporary files are stored under `/opt/data/tmp/test-case-design/{sessionId}/` and cleaned up at the end of the workflow.
-- **Risk:** The skill uses Nacos credentials via environment variables to call backend APIs.
-  **Mitigation:** Scripts mask sensitive values in all output; SKILL.md includes mandatory security rules prohibiting exposure of environment variable values.
-- **Risk:** The skill is focused on test-case writing and does not create test plans, security scans, load tests, or automation scripts.
-  **Mitigation:** Use separate planning, security, performance, or automation workflows for those activities.
+### 必须确认的需求？
+有，需求分析阶段的待澄清问题必须经用户确认后才能进入下一阶段。
 
-## Reference(s)
+### 能否同时处理多个会话？
+能，通过 sessionId 区分。
 
-- [Skill definition](SKILL.md)
-- [测试用例通用规则](references/templates/common-rules.md)
-- [测试用例输出格式规范](references/examples/format-spec.md)
-- [API 集成说明](references/api-integration.md)
-- [功能测试](references/core-capabilities/functional-testing.md)
-- [接口测试](references/core-capabilities/api-testing.md)
-- [AI Agent 测试](references/core-capabilities/agent-testing.md)
-- [通用测试检查清单](references/checklists/common-checklist.md)
-- [待澄清需求清单模板](references/templates/clarification-checklist.md)
-- [测试用例评审报告模板](references/templates/review-report.md)
-- [下载脚本](scripts/download_requirements.py)
-- [Nacos 服务发现](scripts/discover_and_call.py)
-- [用例上传脚本](scripts/upload_cases.py)
-- [文件上传脚本](scripts/upload_file.py)
-- [ClawHub skill page](https://clawhub.ai/cassianran/test-case-design)
+### Hermes Agent 下使用有什么注意事项？
+必须先加载 hermes-env-pitfalls skill，否则可能出现写文件拒绝等问题。本项目已默认使用 `/opt/data/tmp/` 解决 `/tmp/` 权限问题。
 
-## Skill Output
+## Dependency
 
-**Output Type(s):** [Text, Markdown, JSON, API]
-
-**Output Format:** [API JSON] (备选: Markdown tables) + [MD Documents] (待澄清需求清单、测试用例评审报告)
-
-**Output Parameters:** [1D]
-
-**Other Properties Related to Output:** [Uploads test cases via REST API, uploads review documents via multipart form upload, cleans up local temp files after completion.]
-
-## Skill Version(s)
-
-1.2.0 (forked from 1.0.8 by cassianran)
-
-## Ethical Considerations
-
-Users should evaluate whether this skill is appropriate for their environment, review any generated or modified files before relying on them, and apply their organization's safety, security, and compliance requirements before deployment.
+- pymupdf（PDF 解析）
+- python-docx（DOCX 解析）
+- md2pdf + weasyprint（PDF 生成）
+- Nacos SDK（服务发现）
+- Python 3.10+

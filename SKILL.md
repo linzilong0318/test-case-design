@@ -1,13 +1,11 @@
 ---
 name: test-case-design
-description: 这项技能用于后端驱动的全流程测试用例设计：从 PDF/DOCX 需求文档下载与解析、需求整理与确认、测试用例生成与 API 上传、评审文档生成与上传，到最终总结。涵盖功能测试、接口测试、AI Agent 测试、兼容性测试、UI 测试、联动测试、路由测试及多平台专项测试（移动端/小程序/H5/桌面/PC Web）。仅专注于编写测试用例，不涉及测试计划、测试策略或自动化脚本。
+description: 本技能用于功能测试用例全流程设计。基于业务方方法论，从需求分析、测试点提取、用例编写到用例评审，涵盖 API JSON 上传与文档生成。仅专注于编写测试用例，不涉及测试计划、测试策略或自动化脚本。
 ---
 
 ## 概述
 
-本 skill 服务于后端驱动的测试用例生成全流程，通过 `sessionId` 串联多轮对话。
-
-> **⚠️ Hermes Agent 环境前置要求**：如果运行在 Hermes Agent 下，**必须先加载 `hermes-env-pitfalls` skill**。该 skill 解决了已知的 `/tmp/` 写文件拒绝、数字自动替换、heredoc 字节损坏等问题。本 skill 已采用 `/opt/data/tmp/` 作为默认临时路径以兼容该环境。
+本 skill 服务于功能测试用例生成全流程，通过 `sessionId` 串联多轮对话。
 
 ---
 
@@ -28,8 +26,7 @@ description: 这项技能用于后端驱动的全流程测试用例设计：从 
 
 5. **API 响应过滤**：后端接口返回的响应中如包含 Token、密码、密钥等敏感字段，展示给用户前必须脱敏。
 
-6. **禁止输出业务ID**：例如`sessionId` `project_id` `user_id` `business_user_id`不允许展示给用户
-
+6. **禁止输出业务ID**：例如 `sessionId` `project_id` `user_id` `business_user_id` 不允许展示给用户。
 
 ---
 
@@ -41,42 +38,48 @@ description: 这项技能用于后端驱动的全流程测试用例设计：从 
 
 ```
 /opt/data/tmp/test-case-design/{sessionId}/
-├── requirements.pdf                  # 阶段一下载的需求文档
-├── requirements.docx                 # 阶段一下载的需求文档（DOCX 格式时）
-├── cases_payload.json                # 阶段二生成的用例 JSON（持久化，上传失败可重试）
-├── 待澄清需求清单_{batchNo}.pdf       # 阶段三生成的待澄清需求清单
-├── 测试用例评审报告_{batchNo}.pdf     # 阶段三生成的测试用例评审报告
-└── scripts/                          # 临时 Python 脚本（如有，必须放在此子目录下）
+├── requirements.pdf                     # 阶段一下载的需求文档
+├── requirements.docx                    # 阶段一下载的需求文档（DOCX 格式时）
+├── test_points_{batchNo}.md             # 阶段二输出的测试点清单
+├── test_cases_{batchNo}.md              # 阶段三输出的测试用例（供阶段四评审用）
+├── cases_payload.json                   # 阶段三生成的用例 JSON（持久化，评审通过后上传）
+├── 待澄清需求清单_{batchNo}.md          # 阶段四生成的待澄清需求清单（Markdown 源文件）
+├── 待澄清需求清单_{batchNo}.pdf         # 阶段四生成的待澄清需求清单（PDF）
+├── 测试用例评审报告_{batchNo}.md        # 阶段四生成的测试用例评审报告（Markdown 源文件）
+├── 测试用例评审报告_{batchNo}.pdf       # 阶段四生成的测试用例评审报告（PDF）
+└── scripts/                             # 临时 Python 脚本（如有，必须放在此子目录下）
 ```
 
 ### 关键规则
 
-- **严禁**在 `/opt/data/tmp/test-case-design/{sessionId}/` **以外的位置**创建临时 Python 脚本
+- **严禁**在 `/opt/data/tmp/test-case-design/{sessionId}/` **以外的位置**创建临时文件或脚本
 - 如确需创建临时脚本，必须写入 `{sessionId}/scripts/` 子目录
-- 阶段四执行 `rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"` 统一清理，确保不残留任何文件
+- 阶段五执行 `rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"` 统一清理，确保不残留任何文件
 
 ---
 
 ## 入口判断
 
 根据用户请求内容，自动识别当前处于哪个阶段：
-- **阶段一（需求获取）**：用户请求中包含 PDF/DOCX 下载链接 + "理解并整理需求"/"下载"等关键词
-- **阶段二（用例生成）**：用户请求中包含 "需求正确"/"请生成测试用例"/"确认"等关键词 + 已确认的需求内容
+- **阶段一（需求分析）**：用户提供 PDF/DOCX 下载链接 + "分析需求"/"理解需求"等关键词
+- **阶段二（测试点提取）**：用户已确认需求 + "提取测试点"/"开始提取"等关键词
+- **阶段三（用例编写）**：用户确认测试点 + "编写用例"/"生成用例"等关键词
+- **阶段四（用例评审与上传）**：用户确认用例已完成 + "评审"/"上传"等关键词
 
 ---
 
-## 阶段一：需求获取
+## 阶段一：需求分析
 
 ### 1.1 提取关键参数
 
 从用户请求中提取：
-- `docUrl`：需求文档的下载链接（通常在 "下载" 后面或 HTTP 链接格式）
+- `docUrl`：需求文档的下载链接（通常在"下载"后面或 HTTP 链接格式）
 - `sessionId`：会话标识（用户明确告知的 "sessionId 是 xxx"）
 - `fileFormat`：根据 URL 后缀自动识别文件格式（`.pdf` 或 `.docx`），如无后缀以用户说明为准
 
 ### 1.2 下载需求文档
 
-**terminal工具执行标准下载脚本**：
+**执行标准下载脚本**：
 
 ```bash
 # 创建临时目录
@@ -84,7 +87,6 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 mkdir -p "/opt/data/tmp/test-case-design/{sessionId}/"
 
 # 确定输出文件名（根据 URL 后缀）
-# 如果 URL 以 .docx 结尾，输出文件名为 requirements.docx，否则为 requirements.pdf
 OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx}"
 
 # 执行下载脚本（内置 3 次重试 + 指数退避，无需额外处理）
@@ -94,11 +96,11 @@ OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx
   --session-id "{sessionId}"
 ```
 
-### 1.4 解析需求文档并提取需求
+### 1.3 解析需求文档
 
 根据文件格式选择对应的解析方式：
 
-**方式 A：PDF 文件（`requirements.pdf`）**
+**PDF 文件（`requirements.pdf`）**
 
 ```bash
 /opt/data/.venv/bin/python3 -c "
@@ -109,7 +111,7 @@ for page in doc:
 "
 ```
 
-**方式 B：DOCX 文件（`requirements.docx`）**
+**DOCX 文件（`requirements.docx`）**
 
 ```bash
 /opt/data/.venv/bin/python3 -c "
@@ -124,249 +126,524 @@ for table in doc.tables:
 "
 ```
 
-解析后，基于文档内容**判断系统类型**以便后续阶段加载正确的测试能力文件：
-   - 文档中是否涉及 API/接口定义 → 标记需要加载 `api-testing.md`
-   - 文档中是否涉及 AI Agent/智能体 → 标记需要加载 `agent-testing.md`
-   - 文档中涉及的前端平台类型（移动App/小程序/H5/桌面/PC Web）→ 标记需要加载对应平台文件
-   - 未命中上述类型 → 默认加载 `functional-testing.md`
+### 1.4 需求分析（8维度框架）
 
-### 1.5 整理需求列表（不允许跳过这一步）
+按以下8个维度系统检查需求文档，标记每项：✅ 明确 / ⚠️ 模糊 / ❌ 缺失
 
-将需求整理为以下结构化格式返回给用户确认：
+| 维度 | 检查项 |
+|------|--------|
+| 1️⃣ 功能完整性 | 输入/输出/流程是否明确？前置/后置条件是否完整？ |
+| 2️⃣ 逻辑一致性 | 需求间是否矛盾？同一概念定义是否一致？条件分支是否完整？ |
+| 3️⃣ 边界清晰度 | 边界值是否明确？异常场景是否完整？超界处理是否明确？ |
+| 4️⃣ 可测试性 | 需求是否可量化？验收标准是否明确？是否存在模糊词汇？ |
+| 5️⃣ 数据完整性 | 字段定义是否完整？类型/长度/格式是否明确？约束是否明确？ |
+| 6️⃣ 异常处理 | 异常场景是否完整？处理方式是否明确？容错机制是否明确？ |
+| 7️⃣ 依赖关系 | 是否有外部依赖？前置条件是否明确？是否存在循环依赖？ |
+| 8️⃣ 性能要求 | 响应时间/吞吐量/并发要求是否明确？（仅需求明确时检查） |
+
+### 1.5 输出需求分析结果
+
+向用户输出以下格式：
+
+**第一部分：维度评估**
+
+| 维度 | 评估 | 说明 |
+|------|------|------|
+| 功能完整性 | ✅/⚠️/❌ | 简要说明 |
+| 逻辑一致性 | ✅/⚠️/❌ | 简要说明 |
+| 边界清晰度 | ✅/⚠️/❌ | 简要说明 |
+| 可测试性 | ✅/⚠️/❌ | 简要说明 |
+| 数据完整性 | ✅/⚠️/❌ | 简要说明 |
+| 异常处理 | ✅/⚠️/❌ | 简要说明 |
+| 依赖关系 | ✅/⚠️/❌ | 简要说明 |
+| 性能要求 | ✅/⚠️/❌/N/A | 简要说明 |
+
+**第二部分：关键信息提取**
+
+- 关键业务规则列表
+- 约束条件列表
+
+**第三部分：待澄清问题（如有）**
+
+| 编号 | 维度 | 问题 | 我的理解 |
+|------|------|------|---------|
+| Q-001 | 边界清晰度 | ... | ... |
+
+### 1.6 ⚠️ 强制停止与等待确认
+
+**有待澄清问题时必须**：
+1. ❌ 禁止自动进入下一步（测试点提取）
+2. ❌ 禁止假设答案继续分析
+3. ✅ 强制停止，等待用户确认
+4. ✅ 用户回复前，不得执行任何后续操作
+
+**用户回复后**：
+- "是"/"继续" → 进入阶段二（测试点提取）
+- "解释"/回答某个问题 → 补充需求后继续
+- 部分回答、部分未回答 → 记录已澄清和未澄清状态，已确认的需求进入下一阶段，未澄清的标注为待定
+
+---
+
+## 阶段二：测试点提取
+
+### 2.1 提取参数
+
+- `sessionId`：会话标识
+- `batchNo`：生成 `yyyyMMddHHmmssSSS`（17位数字字符串）
+- 已确认的需求内容（含用户已澄清的部分）
+- 需求澄清状态：记录每个 Q-xxx 的处理结果
+  - ✅ 已澄清：按澄清后的内容提取测试点
+  - ❓ 未澄清：该需求点的测试点标注"待用户澄清"
+
+### 2.2 按8维度提取测试点
+
+按以下8个维度逐段阅读需求文档，提取测试点：
+
+| 维度 | 检查项 |
+|------|--------|
+| 1️⃣ 功能维度 | 核心功能、辅助功能、业务规则 |
+| 2️⃣ 数据维度 | 有效/无效范围、边界值、字段属性、格式限制 |
+| 3️⃣ 场景维度 | 正向、异常、边界、特殊场景 |
+| 4️⃣ 非功能维度 | 性能、安全、兼容性、易用性（仅需求明确时） |
+| 5️⃣ 组合维度 | 多条件/多字段组合、正交设计 |
+| 6️⃣ 状态转换维度 | 合法/非法转换、前置/后置条件 |
+| 7️⃣ 并发维度 | 多用户并发、操作顺序、超时重试（仅需求明确时） |
+| 8️⃣ 依赖维度 | 外部系统、模块间依赖、数据一致性 |
+
+### 2.3 优先级与风险评估
+
+| 优先级 | 定义 | 风险等级 | 定义 |
+|--------|------|---------|------|
+| P0 | 核心功能、主流程、数据安全、关键边界值 | 高 | 涉及金额、数据安全、核心业务 |
+| P1 | 常用功能、关键分支、异常处理、重要边界场景 | 中 | 影响用户体验、可能导致数据错误 |
+| P2 | 辅助功能、非关键边界场景 | 低 | 界面显示、提示信息 |
+| P3 | 优化项、兼容性 | 低 | 优化项、兼容性问题 |
+
+### 2.4 ⚠️ 强制约束
+
+1. **严格基于需求文档提取** — 每个测试点必须标注来源（需求第X段），禁止猜测
+2. **完整性检查** — 覆盖所有需求点（100%），提取后逐一对照需求文档
+3. **数据验证规则** — 仅提取需求明确的规则，未明确时标注为"需求未明确"
+
+### 2.5 输出测试点清单
+
+按需求文档模块顺序输出，同一模块内按优先级排序（P0 → P1 → P2 → P3）：
 
 ```markdown
-## 需求整理（来自：{文档文件名}）
+## [模块名称]
 
-### 一、功能需求清单
-| 编号 | 功能模块 | 子模块 | 需求描述 | 优先级判断 |
-|------|---------|--------|---------|-----------|
-| REQ-001 | 环境管理 | 添加环境 | 验证添加环境输入非法字符时校验拦截 | 高 |
-| REQ-002 | ... | ... | ... | ... |
+1. [测试点名称]（P0，高风险）
+   来源：需求第X段
+   - [子测试点1]
+   - [子测试点2]
 
-### 二、非功能需求清单（如有）
-| 编号 | 类型 | 需求描述 | 优先级判断 |
-|------|------|---------|-----------|
-
-### 三、约束条件（如有）
-- 系统类型：PC Web 管理后台
-- 涉及接口：是/否
-- 涉及 AI Agent：是/否
-- ...
-
-### 四、待澄清问题
-| 编号 | 问题 | 我的理解 |
-|------|------|---------|
-| Q-001 | ... | ... |
-
----
-以上需求整理完毕，请确认或修改。确认后我将基于最终需求撰写测试用例。
+2. [测试点名称]（P1，中风险）
+   来源：需求第X段
+   ...
 ```
 
-### 1.6 等待用户确认
+输出后持久化到临时目录：
 
-用户确认后的下一轮请求将进入阶段二。用户可能在确认时修改某些需求点，以用户最终确认的内容为准。
+```bash
+cat > "/opt/data/tmp/test-case-design/{sessionId}/test_points_{batchNo}.md" << 'EOF'
+... (测试点清单内容) ...
+EOF
+```
 
-> **关于待澄清需求**：用户可能对部分 Q-xxx 问题进行了澄清，也可能部分未澄清，甚至可能完全没有澄清。请记录哪些已澄清、哪些未澄清，这些信息将在阶段二用例生成时使用（未澄清的需求对应用例会做标记）。
+最后向用户展示测试点清单并确认，用户确认后进入阶段三。
 
 ---
 
-## 阶段二：用例生成与上传
+## 阶段三：用例编写
 
-### 2.1 提取参数与需求状态
+### 3.1 提取参数
 
-从用户确认请求中提取：
 - `sessionId`：会话标识
-- 确认后的需求内容（用户可能已修改）
-- **需求澄清状态**：记录阶段一中每个 Q-xxx 待澄清问题的处理结果
-  - ✅ 已澄清：用户明确给出了答案，按澄清后的内容设计用例
-  - ❓ 未澄清：用户未明确回答或跳过了该问题，对应需求的用例标题需添加标记
+- `batchNo`：与阶段二相同的批次号
+- 测试点清单：从 `/opt/data/tmp/test-case-design/{sessionId}/test_points_{batchNo}.md` 读取
 
-### 2.2 加载测试能力文件
+### 3.2 应用8种测试设计方法
 
-根据阶段一中标记的系统类型，加载对应的能力文件。**始终加载** `references/templates/common-rules.md`（通用规则）。
+| 方法 | 说明 |
+|------|------|
+| 1️⃣ 等价类划分 | 有效等价类至少1个代表值，每个无效等价类至少1个用例 |
+| 2️⃣ 边界值分析 | 最小值、最小值-1、最大值、最大值+1 |
+| 3️⃣ 判定表法 | 多条件组合场景 |
+| 4️⃣ 因果图法 | 输入条件与输出结果的因果关系 |
+| 5️⃣ 状态迁移测试 | 覆盖所有合法状态转换路径 |
+| 6️⃣ 场景法 | 基于用户真实使用场景 |
+| 7️⃣ 正交试验设计 | 减少组合场景用例数量 |
+| 8️⃣ 错误推测法 | 基于需求中明确提到的易错点进行测试 |
 
-**能力文件**（按系统类型选择，可叠加）：
+### 3.3 应用表单场景设计规则
 
-| 系统类型 | 加载文件 |
-|---------|---------|
-| 涉及接口/API | `references/core-capabilities/api-testing.md` |
-| 涉及 AI Agent/智能体 | `references/core-capabilities/agent-testing.md` + `references/core-capabilities/functional-testing.md` 中的"第一部分：测试用例设计方法"+"第二部分：测试用例质量标准" |
-| 默认（功能测试） | `references/core-capabilities/functional-testing.md` |
+当需求涉及新增/编辑表单时，必须按以下规则设计用例：
 
-**平台文件**（按前端平台叠加）：
+**① 完整正例用例（P0）— 优先设计**
 
-| 前端平台 | 加载文件 |
-|---------|---------|
-| 移动端 App | `references/platform/mobile-app.md` |
-| 小程序 | `references/platform/mini-program.md` |
-| 移动 Web / H5 | `references/platform/mobile-web.md` |
-| 桌面端 | `references/platform/desktop.md` |
-| PC Web 端 | `references/platform/pc-web.md` |
+必须有一条用例逐字段列举具体数据：
+- 新增表单：所有字段填写具体值 → 提交成功
+- 编辑表单：修改所有字段为具体值 → 保存成功
 
-> **说明**：接口测试通常不叠加平台文件。多个平台可同时叠加（如同一系统有 PC Web 和移动 App）。
+```markdown
+用例编号：TC-User-001
+用例标题：新增用户-完整填写所有字段成功
+所属模块：用户管理
+优先级：P0
 
-### 2.3 生成测试用例
+前置条件：
+- 系统已登录
+- 打开新增用户表单
 
-按加载的能力文件和平台文件中的设计方法生成测试用例：
+测试步骤：
+1. 在姓名字段输入"张三"
+2. 在邮箱字段输入"zhangsan@qq.com"
+3. 在电话字段输入"13800138000"
+4. 在地址字段输入"北京市朝阳区"
+5. 在备注字段输入"VIP客户"
+6. 点击提交按钮
 
-1. **确定测试类型**：根据需求内容判断测试类型（功能测试 type=1、接口测试 type=2 等），类型定义见 `references/examples/format-spec.md`
-2. **应用设计方法**：
-   - 等价类划分法：为每个输入条件划分有效/无效等价类
-   - 边界值分析法：测试上界、下界、临界值
-   - 场景法：覆盖基本流和备选流
-   - 错误推测法：基于经验补充异常场景
-   - 因果图法/正交实验法：多条件组合场景
-3. **覆盖平台专项**：按平台文件中的测试维度补充用例
-4. **严格遵循通用规则**：
-   - 测试步骤中**必须给出具体输入值/参数/操作对象**，不得使用描述性语言
-   - 大量数据场景（>1000 字符、>1MB 文件）可用描述+明确参数
-   - 预期结果与测试步骤一一对应
-5. **处理待澄清需求**：根据 2.1 中记录的需求澄清状态区分处理
-   - 对于用户已澄清的需求 → 用例标题按正常格式 `验证{功能点}...`
-   - 对于用户**未澄清**的需求 → 用例标题以 `【待用户澄清需求】` 开头，如 `【待用户澄清需求】验证环境名称输入超长字符时的校验拦截`
-   - 未澄清需求的用例仍然按常规方法设计（基于合理的默认推测），但标题标记让用户知晓哪些需要后续确认
+预期结果：
+- 页面提示"新增成功"
+- 用户列表中出现新记录：姓名="张三"，邮箱="zhangsan@qq.com"，电话="13800138000"
+```
 
-### 2.4 用例自查
+**② 其他验证用例（P1/P2）— 可使用语义化描述**
 
-按以下规则加载检查清单进行自查：
+必填字段验证、格式验证、边界值等用例：
 
-| 测试类型 | 检查清单 |
-|---------|---------|
-| 接口测试 | `references/checklists/api-checklist.md` |
-| Agent 测试 | `references/checklists/agent-checklist.md` + `references/checklists/common-checklist.md` 中的"一、功能测试检查清单" |
-| Agent 测试 + 平台 | `references/checklists/agent-checklist.md` + `references/checklists/common-checklist.md` 中的"一、功能测试检查清单" + `references/checklists/{平台}-checklist.md` |
-| 功能测试 + 平台 | `references/checklists/common-checklist.md` + `references/checklists/{平台}-checklist.md` |
-| 功能测试（无平台） | `references/checklists/common-checklist.md` |
+```markdown
+用例编号：TC-User-002
+用例标题：新增用户-姓名为空提示必填
+优先级：P1
 
-### 2.5 组装 API 格式的用例 JSON 并持久化
+测试步骤：
+1. 打开新增用户表单
+2. 不填写姓名字段，填写其他必填字段
+3. 点击提交按钮
 
-按 `references/examples/format-spec.md` 中定义的 **API JSON 格式** 组装用例。
+预期结果：
+- 页面提示"姓名为必填项"
+- 表单不提交
+```
 
-**生成 batchNo**：使用当前时间，格式 `yyyyMMddHHmmssSSS`（17位数字字符串），如 `20260709143025123`。同一批次所有用例使用**相同的 batchNo**。
+**③ 编辑清除非必填项（P2）— 仅编辑表单**
 
-**⚠️ 必须持久化到本地文件:** `/opt/data/tmp/test-case-design/{SESSION_ID}/cases_payload.json`：
+如果表单存在非必填项字段，必须设计一条清除所有非必填项并保存成功的用例。
 
-### 2.6 上传用例到后端
+### 3.4 应用集成场景设计
+
+当多个模块/功能协同工作时，必须设计集成场景用例：
+
+| 场景类型 | 检查项 |
+|---------|--------|
+| 数据流转 | 模块A输出→模块B输入是否正确？ |
+| 状态同步 | 模块A状态变化是否同步到模块B？ |
+| 异常处理 | 模块A异常时模块B如何处理？是否有回滚？ |
+| 顺序依赖 | 操作顺序是否有要求？反向操作是否支持？ |
+| 并发冲突 | 多个模块同时操作同一数据时是否有冲突？ |
+
+**设计原则**：
+- 每个集成用例验证一条数据流或状态转换
+- 标注涉及的模块（如：订单模块+支付模块+库存模块）
+- 前置条件包含各模块的初始状态
+- 预期结果验证所有模块的最终状态
+
+### 3.5 用例字段定义
+
+每个用例包含以下8个字段：
+
+| 字段 | 说明 | 必填 |
+|------|------|------|
+| 序号 | 用例在清单中的序号 | 是 |
+| 用例编号 | 格式 `TC-[模块]-[序号]`，如 `TC_User_001` | 是 |
+| 用例标题 | [动词+对象+预期]，如"验证用户名为空时提示必填" | 是 |
+| 所属模块 | 功能模块名称 | 是 |
+| 优先级 | P0/P1/P2/P3 | 是 |
+| 前置条件 | 具体的预置条件，编号列表 | 是 |
+| 测试步骤 | 编号列表，每步一个具体操作。**必须给出具体输入值** | 是 |
+| 预期结果 | 可观察、可验证的具体结果，与步骤对应 | 是 |
+
+### 3.6 ⚠️ 输出规则
+
+**规则一：必须为所有测试点设计用例（设计阶段覆盖率100%）**
+- 禁止跳过任何测试点
+- 一个测试点可能需要多个用例（如边界值的最小值、最大值、最小值-1、最大值+1）
+
+**规则二：分阶段输出（用例数≥25时）**
+- 每设计完25-30个用例立即输出进度：
+  `✅ 第1阶段完成（已设计用例1-30，共X个）`
+
+### 3.7 持久化到临时目录
+
+**生成 Markdown 格式用例文件（供评审用）**
+
+```markdown
+用例编号：TC-[模块]-[序号]
+用例标题：[动词+对象+预期]
+所属模块：[模块名称]
+优先级：P0/P1/P2/P3
+
+前置条件：
+- [具体条件1]
+- [具体条件2]
+
+测试步骤：
+1. [具体操作]
+2. [具体操作]
+
+预期结果：
+- [可观察、可验证的具体结果]
+
+---
+```
+
+持久化路径：`/opt/data/tmp/test-case-design/{sessionId}/test_cases_{batchNo}.md`
+
+> ⚠️ **此时仅保存 JSON 文件，不上传到后端。** 上传在阶段四评审通过后执行。
+
+### 3.8 用例自查
+
+- [ ] 是否为所有测试点都设计了用例？（覆盖率目标 100%）
+- [ ] 是否覆盖了正向 + 异常 + 边界场景？
+- [ ] 每条用例的步骤是否使用了具体数据值（禁止"合法数据""正常输入"等模糊描述）？
+- [ ] 预期结果是否可观察、可验证、可判定？
+- [ ] 是否覆盖了所有优先级（P0、P1、P2、P3）？
+- [ ] 是否设计了关键的集成场景用例？
+- [ ] 是否有冗余用例（多个用例验证同一测试点）？
+- [ ] 有表单时是否设计了完整正例用例？
+
+---
+
+## 阶段四：用例评审与上传
+
+### 4.1 评审准备
+
+- 读取阶段三的测试用例 MD 文件：`/opt/data/tmp/test-case-design/{sessionId}/test_cases_{batchNo}.md`
+- 读取阶段二的测试点 MD 文件：`/opt/data/tmp/test-case-design/{sessionId}/test_points_{batchNo}.md`
+
+### 4.2 按4维度评审
+
+| 维度 | 检查项 |
+|------|--------|
+| 1️⃣ 完整性检查 | 是否覆盖所有需求点？是否包含正向、异常、边界场景？覆盖率是否≥98%？ |
+| 2️⃣ 准确性检查 | 预期结果是否与需求一致？测试数据是否合理、具体？用例编号是否规范？ |
+| 3️⃣ 有效性检查 | 用例是否能发现缺陷？是否存在冗余用例？是否遵循原子性原则（一个用例验证一个测试点）？ |
+| 4️⃣ 可执行性检查 | 步骤是否清晰、无歧义？前置条件是否具体可验证？是否具备独立性？ |
+
+### 4.3 覆盖率计算
+
+```
+覆盖率 = (已覆盖测试点数 / 总测试点数) × 100%
+```
+
+- 总测试点数：从 `test_points_{batchNo}.md` 中提取
+- 已覆盖测试点数：逐用例核对，统计覆盖到的测试点
+
+### 4.4 判定与循环
+
+| 覆盖率 | 结果 | 动作 |
+|--------|------|------|
+| ≥ 98% | ✅ **评审通过** | 进入 4.6 上传环节 |
+| < 98% | ❌ **评审不通过** | 列出缺失场景，回到阶段三补充 |
+
+**循环流程**：
+1. ❌ 评审不通过 → 列出缺失场景（每个场景含：测试点描述、优先级、建议用例标题、测试数据示例）
+2. 回到阶段三 → 根据缺失场景补充用例，更新 `test_cases_{batchNo}.md` 和 `cases_payload.json`
+3. 重新评审
+4. 循环直到通过
+
+**豁免机制**：剩余 < 2% 可豁免（极难构造环境、极低概率场景、需求未明确），但必须说明豁免原因。
+
+### 4.5 评审输出
+
+**评审不通过时（简化输出）：**
+
+```markdown
+【评审结果】：❌ 不通过
+【覆盖率】：XX% (已覆盖 X/Y 个测试点)
+【豁免测试点】：X 个
+【评审次数】：第 N 次评审
+
+**缺失场景：**
+1. [场景描述]（P0，边界场景）
+   建议用例标题：验证...
+   测试数据示例：...
+```
+
+**评审通过时（完整输出）：**
+
+```markdown
+## ✅ 评审结果
+
+【评审结果】：✅ 通过
+【覆盖率】：XX%
+【豁免测试点】：X 个（如有）
+【评审次数】：第 N 次评审
+
+## 评审历史记录
+
+| 评审轮次 | 覆盖率 | 用例数 | 结果 | 缺失场景 |
+|---------|--------|--------|------|---------|
+| 第1次 | XX% | X个 | ❌ | ... |
+| 第2次 | XX% | X个 | ✅ | — |
+
+## 测试用例统计
+
+| 指标 | 数值 |
+|------|------|
+| 用例总数 | X 条 |
+| P0（高） | X 条 |
+| P1（中） | X 条 |
+| P2（低） | X 条 |
+| P3（建议） | X 条 |
+
+## 测试覆盖分析
+
+| 维度 | 状态 | 说明 |
+|------|------|------|
+| 完整性 | ✅/⚠️/❌ | 覆盖了所有功能点，包含正向+异常+边界 |
+| 准确性 | ✅/⚠️/❌ | 预期结果与需求一致，数据具体 |
+| 有效性 | ✅/⚠️/❌ | 无冗余用例，遵循原子性原则 |
+| 可执行性 | ✅/⚠️/❌ | 步骤清晰，前置条件可验证 |
+
+## 豁免测试点说明（如有）
+
+| 测试点 | 豁免原因 |
+|--------|---------|
+| ... | 极难构造环境 / 极低概率场景 / 需求未明确 |
+```
+
+### 4.6 ✅ 通过后：上传用例到后端
+
+**根据评审修改后的md文件生成 API JSON 文件**
+
+按 `references/examples/format-spec.md` 中的 JSON 格式生成 `cases_payload.json`：
+
+```bash
+# 使用 Python 脚本生成 JSON 文件（推荐，避免手动拼接 JSON）
+/opt/data/.venv/bin/python3 -c "
+import json
+# ... 组装用例 JSON ...
+with open('/opt/data/tmp/test-case-design/{sessionId}/cases_payload.json', 'w', encoding='utf-8') as f:
+    json.dump(payload, f, ensure_ascii=False, indent=2)
+print(f'用例已持久化: {len(cases)} 条')
+"
+```
 
 **使用标准上传脚本**（自动完成 Nacos 服务发现 + API 调用）：
-
 ```bash
 python3 scripts/upload_cases.py \
   --payload-file "/opt/data/tmp/test-case-design/{sessionId}/cases_payload.json"
 ```
 
 > **脚本说明**：`scripts/upload_cases.py` 自动完成：
-> - 从环境变量读取 Nacos 配置（`NACOS_SERVER_ADDRESSES`、`NACOS_NAMESPACE`、`NACOS_USERNAME`、`NACOS_PASSWORD`、`BACKEND_SERVICE_NAME`）
+> - 从环境变量读取 Nacos 配置
 > - 通过 Nacos 发现健康的后端服务实例
 > - 读取本地 JSON 文件并 POST 到 `/api/v1/testcase/save`
 > - 打印上传结果
 >
-> **上传失败处理**：如果上传失败，检查错误信息后可直接重新执行上述命令（JSON 文件已持久化），无需重新生成用例。
+> **上传失败处理**：检查错误信息后可直接重新执行上述命令（JSON 文件仍存在），无需重新生成用例。
+
+### 4.7 PDF 文档生成（两步法）
+
+按以下两步法生成 PDF 文档。
 
 ---
 
-## 阶段三：文档生成与上传
-
-### 3.1 生成「待澄清需求清单」
-
-在生成前，判断是否存在待澄清需求：
-
-- 对阶段一用户没有回答的、遗留的未澄清问题，用例设计过程中新发现的模糊点， 按 `references/templates/clarification-checklist.md` 模板生成 PDF 文档。如果需求已经非常清晰，也请在文件中注明。
-
-**必须包含**：
-- 基本信息（batchNo、sessionId、需求来源、整理时间）
-- 已确认需求列表（从阶段一用户确认的需求中提取）
-- 待澄清需求（用例设计过程中发现的需求模糊点、未明确边界、遗漏场景等）
-- 需求覆盖度评估
-
-生成方式见下方 **3.3 使用 md2pdf 生成 PDF 文件**（与评审报告共用 PDF 生成逻辑）。
-
-### 3.2 生成「测试用例评审报告」
-
-对生成的用例进行自我评审，按 `references/templates/review-report.md` 模板内容生成 PDF 文档。
-
-**必须包含**：
-- 基本信息（batchNo、sessionId、评审时间）
-- 用例概况（总数、按类型/优先级/模块分布统计）
-- 覆盖度评审（功能覆盖、场景覆盖、测试设计方法应用）
-- 质量评审（步骤可执行性、预期结果可验证性、数据具体性）
-- 问题与改进建议
-- 评审结论
-
-生成方式见下方 **3.3 使用 md2pdf 生成 PDF 文件**。
-
-### 3.3 使用 md2pdf 生成 PDF 文件
-
-本步骤为 3.1 和 3.2 中需要生成 PDF 时的具体操作指引。
-
-使用 **md2pdf** 替代 reportlab 生成 PDF（md2pdf 将 Markdown 转为 HTML 后由 weasyprint 渲染为 PDF，无需手动处理中文字体注册等复杂问题）。
-
-> **先决条件**：md2pdf 和 weasyprint 已在环境预装（详见 1.2 节）。
-
-#### 3.3.1 工作流程
-
-整体流程分两步：
+#### 4.7.1 工作流程
 
 ```
-生成 Markdown 内容（Python 脚本拼接字符串）
+Step A: Agent 用 Python（textwrap.dedent + .replace()）生成 .md 文件
     ↓
-调用 md2pdf 转换为 PDF（推荐 raw 模式）
+Step B: 调用 scripts/md_to_pdf.py 将 .md 转换为 .pdf
 ```
 
-**步骤 A：编写 Python 脚本，按模板内容拼接 Markdown 字符串**
+---
 
-按 `references/templates/` 中的对应模板结构，用 Python 拼接完整的 Markdown 字符串，包括：
-- 标题（`#`、`##`、`###`）
-- 段落（空行分隔）
-- 表格（标准 Markdown 表格语法）
-- 列表（`- ` 无序、`1. ` 有序）
-- 代码块（` ``` ` 包裹）
-- 引用（`> `）
-- 分隔线（`---`）
+#### Step A：生成 Markdown 文件
 
-**注意**：涉及时间，一律转成东八区的时间
+按对应的模板结构，用 Python **安全模式**生成 Markdown 字符串并写入文件。
 
-**步骤 B：调用 md2pdf 转换为 PDF**
+##### ⚠️ 安全模式规则（禁止使用 f-string 拼接模板）
 
 ```python
+# ✅ 正确做法：textwrap.dedent + .replace()
+import textwrap
 from pathlib import Path
-from md2pdf.core import md2pdf
 
-# 推荐：raw 模式（免中间 .md 文件）
-md2pdf(
-    raw=markdown_content,                          # 直接传入 Markdown 字符串
-    pdf=Path('/opt/data/tmp/test-case-design/{sessionId}/输出文件.pdf'),
-    css=Path('references/templates/pdf-style.css')  # 可选，默认样式
-)
+# 1) 用普通字符串定义模板，所有 {xxx} 只是普通字符
+md_content = textwrap.dedent("""\
+# 待澄清需求清单
+
+## 基本信息
+
+| 项目 | 内容 |
+|------|------|
+| 批次号 | {batchNo} |
+| Session ID | {sessionId} |
+""")
+
+# 2) 用显式 .replace() 填充——只有写了的 {xxx} 才会被替换
+md_content = md_content.replace("{batchNo}", batch_no)
+md_content = md_content.replace("{sessionId}", session_id)
+
+# 3) 输出 .md 文件到临时目录
+output_path = Path("/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.md")
+output_path.write_text(md_content, encoding="utf-8")
 ```
 
-> **PDF 文件保存路径**：必须保存在 `/opt/data/tmp/test-case-design/{sessionId}/` 目录下，确保阶段四能被统一清理。
+```python
+# ❌ 错误做法（禁止）：f-string 拼接模板
+# 下面的代码极易出现未定义变量、漏转义 {} 等问题：
+md_content = f"""
+| 批次号 | {batchNo} |     ← 如果 batchNo 变量名拼错 → NameError
+"""
 
-#### 3.3.2 自定义样式
+# ❌ 错误做法（禁止）：内联 python3 -c 执行带大量特殊字符的代码
+```
 
-项目提供了一个默认 CSS 样式文件 `references/templates/pdf-style.css`，已配置好中文排版、表格样式、页眉页脚等。如需自定义样式，可修改该 CSS 文件或在调用时传入自己的 CSS 路径。
+**注意**：涉及时间，一律转成东八区的时间。用 `datetime.now(timezone.utc)` 加上 8 小时。
 
-如果调用时不传 `css` 参数，md2pdf 会使用默认的无样式渲染（仍可正常显示中文，但表格无边框、排版较朴素）。**建议始终传入样式文件**。
+##### 文档命名规范
 
-#### 3.3.3 Markdown 内容生成要点
+| 文档类型 | MD 文件名 | PDF 文件名 |
+|---------|----------|-----------|
+| 待澄清需求清单 | `待澄清需求清单_{batchNo}.md` | `待澄清需求清单_{batchNo}.pdf` |
+| 测试用例评审报告 | `测试用例评审报告_{batchNo}.md` | `测试用例评审报告_{batchNo}.pdf` |
 
-| 要点 | 说明 |
-|------|------|
-| **中文** | 直接写入字符串即可，无需任何额外配置 |
-| **表格** | 使用标准 Markdown 表格 `\| col1 \| col2 \|`，首行为表头 |
-| **换行** | 段落间空一行，表格内不要用复杂换行 |
-| **特殊字符** | `\|` 在表格内需转义为 `\\|`，`*` 和 `_` 可能会被解析为斜体/加粗标记 |
-| **代码块** | 使用三个反引号包裹，支持指定语言 |
-| **变量替换** | 在 Python 中用 f-string 或 `.format()` 将 `{sessionId}`、`{batchNo}` 等参数填入 |
+---
 
-#### 3.3.4 生成的 PDF 文件
+#### Step B：调用固化脚本转换 PDF
 
-| 文档类型 | 文件名 |
-|---------|-------|
-| 待澄清需求清单 | `待澄清需求清单_{batchNo}.pdf` |
-| 测试用例评审报告 | `测试用例评审报告_{batchNo}.pdf` |
+```bash
+# 转换待澄清需求清单
+/opt/data/.venv/bin/python3 scripts/md_to_pdf.py \
+  --input-md "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.md" \
+  --output-pdf "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" \
+  --css "references/templates/pdf-style.css"
 
-### 3.4 上传文档到后端
+# 转换测试用例评审报告
+/opt/data/.venv/bin/python3 scripts/md_to_pdf.py \
+  --input-md "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.md" \
+  --output-pdf "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf" \
+  --css "references/templates/pdf-style.css"
+```
+
+> **脚本说明**：`scripts/md_to_pdf.py` 自动完成：
+> - 校验输入 `.md` 文件是否存在
+> - 自动创建输出目录（如不存在）
+> - 校验 CSS 文件（不存在则 warn 回退到无样式渲染，不阻断流程）
+> - 调用 md2pdf 转换，带完整的异常捕获和错误提示
+> - Exit code 0=成功，1=参数/文件错误，2=转换异常
+
+#### PDF样式
+
+默认 CSS 样式文件 `references/templates/pdf-style.css`，已配置好中文排版、表格样式、页眉页脚等。如果 `--css` 指定的文件不存在，脚本会自动降级并打印警告。
+
+---
+
+### 4.8 上传文档到后端
 
 **使用标准上传脚本**（自动完成 Nacos 服务发现 + 文件上传）：
 
@@ -388,46 +665,43 @@ python3 scripts/upload_file.py \
   --type REPORT
 ```
 
-> **脚本说明**：`scripts/upload_file.py` 自动完成：
-> - 从环境变量读取 Nacos 配置
-> - 通过 Nacos 发现健康的后端服务实例
-> - multipart/form-data 上传 PDF 文件到 `/api/v1/file/upload`
-> - 打印上传结果（含文件访问链接）
-
 > **重要**：记录上传接口返回的 `data.url`，后续总结中需要展示给用户。
 
 ---
 
-## 阶段四：清理与总结
+## 阶段五：清理与总结
 
-### 4.1 清理临时文件
+### 5.1 清理临时文件
 
 ```bash
 rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 ```
 
-> **目标**：统一清理 `/opt/data/tmp/test-case-design/{sessionId}/` 整个目录，确保不残留 PDF、DOCX、JSON 和临时脚本文件，保持本地环境干净。
+> **目标**：统一清理 `/opt/data/tmp/test-case-design/{sessionId}/` 整个目录，确保不残留 PDF、DOCX、JSON、MD 和临时脚本文件，保持本地环境干净。
 
-### 4.2 返回总结
+### 5.2 返回总结
 
 向用户输出以下格式的总结：
 
 ```markdown
-## 测试用例生成完成
+## 功能测试用例生成完成
 
 | 项目 | 详情 |
 |------|------|
 | 批次号 | {batchNo} |
 | Session ID | {sessionId} |
 | 用例总数 | X 条 |
-| 用例上传 | ✅ 成功 / ❌ 失败（{原因}） |
 
 ### 用例分布
 | 维度 | 分布 |
 |------|------|
-| 按类型 | 功能测试(X), 接口测试(X), ... |
-| 按优先级 | 高(X), 中(X), 低(X) |
+| 按优先级 | P0(X), P1(X), P2(X), P3(X) |
 | 按模块 | 模块A(X), 模块B(X), ... |
+
+### 用例上传
+| 项目 | 状态 |
+|------|------|
+| 上传用例 | ✅ 成功 / ❌ 失败（{原因}） |
 
 ### 文档上传
 | 文档 | 状态 | 链接 |
@@ -440,8 +714,8 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 
 ## 能力边界
 
-✅ 可生成：功能测试、接口测试、AI Agent 测试（含 Agent 安全与边界）、平台专项测试（移动App/小程序/H5/桌面/PC Web）、兼容性测试、UI 测试、联动测试、路由测试
-❌ 不可生成：测试方案、测试策略、测试计划、渗透测试执行、漏洞扫描、性能压测（并发/压力/负载）、自动化脚本
+✅ 可生成：功能测试（含表单验证、状态流转、业务规则、集成场景、边界值、异常场景）
+❌ 不可生成：接口测试、AI Agent 测试、性能测试、兼容性测试、渗透测试、测试方案、测试策略、测试计划、自动化脚本
 
 ---
 
@@ -451,14 +725,19 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 |------|------|---------|
 | 安全规则 | 禁止输出 NACOS_* 等环境变量值，敏感字段必须脱敏 | 见顶部 ⚠️ 安全规则 |
 | 临时文件 | 所有临时文件统一放在 `/opt/data/tmp/test-case-design/{sessionId}/`，流程结束统一清理 | 见顶部 临时文件管理规范 |
-| 步骤必须具体 | 测试步骤中必须给出具体输入值/参数，不得使用描述性语言 | `references/templates/common-rules.md` 第零节 |
-| 编号规则 | caseCode 格式 `[平台]_[模块]_[维度]_[序号]` | `references/templates/common-rules.md` 第三节 |
-| JSON 格式 | 按 API JSON Schema 输出，priority 为 int(0/1/2)，type 为 int(1-9) | `references/examples/format-spec.md` |
-| 用例持久化 | 生成后先写入 `cases_payload.json`，再上传；失败可直接重试 | `scripts/upload_cases.py` |
-| Nacos 服务发现 | 已整合到 `scripts/discover_and_call.py`，上传脚本自动调用 | `scripts/` |
-| 文件解析 | PDF 用 `pymupdf`，DOCX 用 `python-docx`，用 `uv pip install` 幂等安装 | `references/core-capabilities/` |
-| 自查清单 | 生成用例后必须按对应检查清单自查 | `references/checklists/*.md` |
-| 下载脚本 | 使用 `scripts/download_requirements.py`（内置重试+URL编码） | `scripts/download_requirements.py` |
+| 步骤必须具体 | 测试步骤中必须给出具体输入值/参数，不得使用描述性语言 | 3.5 用例字段定义 |
+| 编号规则 | 用例编号 `TC-[模块]-[序号]`，如 `TC_User_001` | 3.5 用例字段定义 |
+| 优先级 | P0=核心功能、P1=常用功能、P2=辅助功能、P3=优化项 | 2.3 优先级与风险评估 |
+| 覆盖率要求 | 设计阶段 100%，评审阶段 ≥98%（<2% 可豁免） | 阶段三/四 |
+| 分阶段输出 | 用例数≥25时，每25-30个用例输出一次进度 | 3.6 输出规则 |
+| 评审循环 | 覆盖率<98%时循环补充，直到通过 | 4.4 判定与循环 |
+| 用例持久化 | 阶段三同时输出 MD（供评审）和 JSON（备上传）到临时目录 | 3.7 持久化 |
+| 上传时机 | 评审通过后才上传用例到后端，失败可重试 | 4.6 |
+| JSON 格式 | 按 API JSON Schema 输出，type固定为1（功能测试） | `references/examples/format-spec.md` |
+| 文档下载脚本 | 使用 `scripts/download_requirements.py`（内置重试+URL编码） | `scripts/download_requirements.py` |
+| 用例上传脚本 | 使用 `scripts/upload_cases.py`（Nacos服务发现） | `scripts/upload_cases.py` |
+| 文件上传脚本 | 使用 `scripts/upload_file.py`（multipart/form-data） | `scripts/upload_file.py` |
+| PDF 生成脚本 | 使用 `scripts/md_to_pdf.py`（两步法：MD→PDF） | `scripts/md_to_pdf.py` |
 
 ## 参考文件索引
 
@@ -466,43 +745,15 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 | 文件 | 用途 |
 |------|------|
 | `scripts/download_requirements.py` | 统一的需求文档下载脚本（内置重试 + 中文 URL 编码） |
+| `scripts/md_to_pdf.py` | 稳定的 Markdown → PDF 转换脚本 |
 | `scripts/discover_and_call.py` | Nacos 服务发现 + REST API 调用通用模块（可导入复用） |
 | `scripts/upload_cases.py` | 用例上传脚本（从 JSON 文件读取，自动发现服务） |
 | `scripts/upload_file.py` | 文件上传脚本（multipart/form-data，自动发现服务） |
 
-### 能力文件
-| 文件 | 用途 |
-|------|------|
-| `references/core-capabilities/functional-testing.md` | 功能测试设计方法、质量标准、联动/路由/UI/交互/动效测试 |
-| `references/core-capabilities/api-testing.md` | 接口测试维度（功能、状态码、数据校验、认证授权、安全、错误处理等） |
-| `references/core-capabilities/agent-testing.md` | AI Agent 测试维度（任务完成度、工具与记忆、安全与边界、性能、内容质量等） |
-
-### 平台文件
-| 文件 | 用途 |
-|------|------|
-| `references/platform/pc-web.md` | PC Web 端专项测试 |
-| `references/platform/mobile-app.md` | 移动端 App 专项测试 |
-| `references/platform/mobile-web.md` | 移动 Web / H5 专项测试 |
-| `references/platform/mini-program.md` | 小程序专项测试 |
-| `references/platform/desktop.md` | 桌面端专项测试 |
-
 ### 模板与规范
 | 文件 | 用途 |
 |------|------|
-| `references/templates/common-rules.md` | 通用规则（编号、优先级、测试类型分类） |
 | `references/templates/pdf-style.css` | PDF 默认样式（配合 md2pdf 使用） |
-| `references/examples/format-spec.md` | 输出格式规范（API JSON + Markdown 表格） |
+| `references/examples/format-spec.md` | API JSON 输出格式规范（type 固定为 1） |
 | `references/templates/clarification-checklist.md` | 待澄清需求清单模板 |
-| `references/templates/review-report.md` | 测试用例评审报告模板 |
-
-### 检查清单
-| 文件 | 用途 |
-|------|------|
-| `references/checklists/common-checklist.md` | 通用检查清单（功能+联动+路由+UI） |
-| `references/checklists/api-checklist.md` | 接口测试检查清单 |
-| `references/checklists/agent-checklist.md` | Agent 测试检查清单 |
-| `references/checklists/pc-web-checklist.md` | PC Web 检查清单 |
-| `references/checklists/mobile-app-checklist.md` | 移动 App 检查清单 |
-| `references/checklists/mobile-web-checklist.md` | 移动 Web 检查清单 |
-| `references/checklists/mini-program-checklist.md` | 小程序检查清单 |
-| `references/checklists/desktop-checklist.md` | 桌面端检查清单 |
+| `references/templates/review-report.md` | 测试用例评审报告模板（含 4 维度评审 + 覆盖率 ≥98%） |
