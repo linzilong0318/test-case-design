@@ -55,7 +55,7 @@ description: 本技能用于功能测试用例全流程设计。基于业务方�
 - **严禁**在 `/opt/data/tmp/test-case-design/{sessionId}/` **以外的位置**创建临时文件或脚本
 - 如确需创建临时脚本，必须写入 `{sessionId}/scripts/` 子目录
 - 阶段五执行 `rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"` 统一清理，确保不残留任何文件
-
+- 能够执行本skill的脚本，尽量用terminal工具执行脚本，不要自己写脚本执行
 ---
 
 ## 入口判断
@@ -90,7 +90,7 @@ mkdir -p "/opt/data/tmp/test-case-design/{sessionId}/"
 OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx}"
 
 # 执行下载脚本（内置 3 次重试 + 指数退避，无需额外处理）
-/opt/data/.venv/bin/python3 scripts/download_requirements.py \
+/opt/data/.venv/bin/python3 /opt/data/skills/test-case-design/scripts/download_requirements.py \
   --url "{docUrl}" \
   --output "$OUTPUT_FILE" \
   --session-id "{sessionId}"
@@ -214,10 +214,9 @@ for table in doc.tables:
 
 | 优先级 | 定义 | 风险等级 | 定义 |
 |--------|------|---------|------|
-| P0 | 核心功能、主流程、数据安全、关键边界值 | 高 | 涉及金额、数据安全、核心业务 |
-| P1 | 常用功能、关键分支、异常处理、重要边界场景 | 中 | 影响用户体验、可能导致数据错误 |
-| P2 | 辅助功能、非关键边界场景 | 低 | 界面显示、提示信息 |
-| P3 | 优化项、兼容性 | 低 | 优化项、兼容性问题 |
+| 0 | 核心功能、主流程、数据安全、关键边界值 | 高 | 涉及金额、数据安全、核心业务 |
+| 1 | 常用功能、关键分支、异常处理、重要边界场景 | 中 | 影响用户体验、可能导致数据错误 |
+| 2 | 辅助功能、非关键边界场景、优化项、兼容性 | 低 | 界面显示、提示信息、优化项、兼容性问题 |
 
 ### 2.4 ⚠️ 强制约束
 
@@ -227,17 +226,17 @@ for table in doc.tables:
 
 ### 2.5 输出测试点清单
 
-按需求文档模块顺序输出，同一模块内按优先级排序（P0 → P1 → P2 → P3）：
+按需求文档模块顺序输出，同一模块内按优先级排序（0 → 1 → 2）：
 
 ```markdown
 ## [模块名称]
 
-1. [测试点名称]（P0，高风险）
+1. [测试点名称]（0，高风险）
    来源：需求第X段
    - [子测试点1]
    - [子测试点2]
 
-2. [测试点名称]（P1，中风险）
+2. [测试点名称]（1，中风险）
    来源：需求第X段
    ...
 ```
@@ -279,7 +278,7 @@ EOF
 
 当需求涉及新增/编辑表单时，必须按以下规则设计用例：
 
-**① 完整正例用例（P0）— 优先设计**
+**① 完整正例用例（优先级:0）— 优先设计**
 
 必须有一条用例逐字段列举具体数据：
 - 新增表单：所有字段填写具体值 → 提交成功
@@ -289,7 +288,7 @@ EOF
 用例编号：TC-User-001
 用例标题：新增用户-完整填写所有字段成功
 所属模块：用户管理
-优先级：P0
+优先级：0
 
 前置条件：
 - 系统已登录
@@ -308,14 +307,14 @@ EOF
 - 用户列表中出现新记录：姓名="张三"，邮箱="zhangsan@qq.com"，电话="13800138000"
 ```
 
-**② 其他验证用例（P1/P2）— 可使用语义化描述**
+**② 其他验证用例（优先级:1/2）— 可使用语义化描述**
 
 必填字段验证、格式验证、边界值等用例：
 
 ```markdown
 用例编号：TC-User-002
 用例标题：新增用户-姓名为空提示必填
-优先级：P1
+优先级：1
 
 测试步骤：
 1. 打开新增用户表单
@@ -327,7 +326,7 @@ EOF
 - 表单不提交
 ```
 
-**③ 编辑清除非必填项（P2）— 仅编辑表单**
+**③ 编辑清除非必填项（优先级:2）— 仅编辑表单**
 
 如果表单存在非必填项字段，必须设计一条清除所有非必填项并保存成功的用例。
 
@@ -359,7 +358,7 @@ EOF
 | 用例编号 | 格式 `TC-[模块]-[序号]`，如 `TC_User_001` | 是 |
 | 用例标题 | [动词+对象+预期]，如"验证用户名为空时提示必填" | 是 |
 | 所属模块 | 功能模块名称 | 是 |
-| 优先级 | P0/P1/P2/P3 | 是 |
+| 优先级 | 0/1/2 | 是 |
 | 前置条件 | 具体的预置条件，编号列表 | 是 |
 | 测试步骤 | 编号列表，每步一个具体操作。**必须给出具体输入值** | 是 |
 | 预期结果 | 可观察、可验证的具体结果，与步骤对应 | 是 |
@@ -370,10 +369,6 @@ EOF
 - 禁止跳过任何测试点
 - 一个测试点可能需要多个用例（如边界值的最小值、最大值、最小值-1、最大值+1）
 
-**规则二：分阶段输出（用例数≥25时）**
-- 每设计完25-30个用例立即输出进度：
-  `✅ 第1阶段完成（已设计用例1-30，共X个）`
-
 ### 3.7 持久化到临时目录
 
 **生成 Markdown 格式用例文件（供评审用）**
@@ -382,7 +377,7 @@ EOF
 用例编号：TC-[模块]-[序号]
 用例标题：[动词+对象+预期]
 所属模块：[模块名称]
-优先级：P0/P1/P2/P3
+优先级：0/1/2
 
 前置条件：
 - [具体条件1]
@@ -400,7 +395,7 @@ EOF
 
 持久化路径：`/opt/data/tmp/test-case-design/{sessionId}/test_cases_{batchNo}.md`
 
-> ⚠️ **此时仅保存 JSON 文件，不上传到后端。** 上传在阶段四评审通过后执行。
+> ⚠️ **此时仅保存 md 文件，不用生成json文件和上传到后端。** json生成和上传在阶段四评审通过后执行。
 
 ### 3.8 用例自查
 
@@ -408,7 +403,7 @@ EOF
 - [ ] 是否覆盖了正向 + 异常 + 边界场景？
 - [ ] 每条用例的步骤是否使用了具体数据值（禁止"合法数据""正常输入"等模糊描述）？
 - [ ] 预期结果是否可观察、可验证、可判定？
-- [ ] 是否覆盖了所有优先级（P0、P1、P2、P3）？
+- [ ] 是否覆盖了所有优先级（0、1、2）？
 - [ ] 是否设计了关键的集成场景用例？
 - [ ] 是否有冗余用例（多个用例验证同一测试点）？
 - [ ] 有表单时是否设计了完整正例用例？
@@ -466,7 +461,7 @@ EOF
 【评审次数】：第 N 次评审
 
 **缺失场景：**
-1. [场景描述]（P0，边界场景）
+1. [场景描述]（0，边界场景）
    建议用例标题：验证...
    测试数据示例：...
 ```
@@ -493,10 +488,9 @@ EOF
 | 指标 | 数值 |
 |------|------|
 | 用例总数 | X 条 |
-| P0（高） | X 条 |
-| P1（中） | X 条 |
-| P2（低） | X 条 |
-| P3（建议） | X 条 |
+| 0（高） | X 条 |
+| 1（中） | X 条 |
+| 2（低） | X 条 |
 
 ## 测试覆盖分析
 
@@ -516,7 +510,7 @@ EOF
 
 ### 4.6 ✅ 通过后：上传用例到后端
 
-**根据评审修改后的md文件生成 API JSON 文件**
+**根据评审修改后的md文件生成 API JSON 文件，注意不要忘记batchNo字段**
 
 按 `references/examples/format-spec.md` 中的 JSON 格式生成 `cases_payload.json`：
 
@@ -533,7 +527,7 @@ print(f'用例已持久化: {len(cases)} 条')
 
 **使用标准上传脚本**（自动完成 Nacos 服务发现 + API 调用）：
 ```bash
-python3 scripts/upload_cases.py \
+python3 /opt/data/skills/test-case-design/scripts/upload_cases.py \
   --payload-file "/opt/data/tmp/test-case-design/{sessionId}/cases_payload.json"
 ```
 
@@ -556,7 +550,7 @@ python3 scripts/upload_cases.py \
 ```
 Step A: Agent 用 Python（textwrap.dedent + .replace()）生成 .md 文件
     ↓
-Step B: 调用 scripts/md_to_pdf.py 将 .md 转换为 .pdf
+Step B: 调用 /opt/data/skills/test-case-design/scripts/md_to_pdf.py 将 .md 转换为 .pdf
 ```
 
 ---
@@ -618,13 +612,13 @@ md_content = f"""
 
 ```bash
 # 转换待澄清需求清单
-/opt/data/.venv/bin/python3 scripts/md_to_pdf.py \
+/opt/data/.venv/bin/python3 /opt/data/skills/test-case-design/scripts/md_to_pdf.py \
   --input-md "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.md" \
   --output-pdf "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" \
   --css "references/templates/pdf-style.css"
 
 # 转换测试用例评审报告
-/opt/data/.venv/bin/python3 scripts/md_to_pdf.py \
+/opt/data/.venv/bin/python3 /opt/data/skills/test-case-design/scripts/md_to_pdf.py \
   --input-md "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.md" \
   --output-pdf "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf" \
   --css "references/templates/pdf-style.css"
@@ -648,9 +642,9 @@ md_content = f"""
 **使用标准上传脚本**（自动完成 Nacos 服务发现 + 文件上传）：
 
 ```bash
-# 上传待澄清需求清单（如已生成）
+# 上传待澄清需求清单（用户没有澄清或者新发现的需求和测试点，整理成清单，必须有）
 if [ -f "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" ]; then
-  python3 scripts/upload_file.py \
+  python3 /opt/data/skills/test-case-design/scripts/upload_file.py \
     --file "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" \
     --session-id "{sessionId}" \
     --batch-no "{batchNo}" \
@@ -658,7 +652,7 @@ if [ -f "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batch
 fi
 
 # 上传测试用例评审报告
-python3 scripts/upload_file.py \
+python3 /opt/data/skills/test-case-design/scripts/upload_file.py \
   --file "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf" \
   --session-id "{sessionId}" \
   --batch-no "{batchNo}" \
@@ -672,6 +666,9 @@ python3 scripts/upload_file.py \
 ## 阶段五：清理与总结
 
 ### 5.1 清理临时文件
+清理临时文件之前做一个简单的自我审查
+1. 是否正常上传了所有生成的用例？
+2. 是否正常上传了待澄清需求和评审报告两个pdf文件？格式是否渲染正常
 
 ```bash
 rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
@@ -695,7 +692,7 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 ### 用例分布
 | 维度 | 分布 |
 |------|------|
-| 按优先级 | P0(X), P1(X), P2(X), P3(X) |
+| 按优先级 | 0(X), 1(X), 2(X) |
 | 按模块 | 模块A(X), 模块B(X), ... |
 
 ### 用例上传
@@ -727,7 +724,7 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 | 临时文件 | 所有临时文件统一放在 `/opt/data/tmp/test-case-design/{sessionId}/`，流程结束统一清理 | 见顶部 临时文件管理规范 |
 | 步骤必须具体 | 测试步骤中必须给出具体输入值/参数，不得使用描述性语言 | 3.5 用例字段定义 |
 | 编号规则 | 用例编号 `TC-[模块]-[序号]`，如 `TC_User_001` | 3.5 用例字段定义 |
-| 优先级 | P0=核心功能、P1=常用功能、P2=辅助功能、P3=优化项 | 2.3 优先级与风险评估 |
+| 优先级 | 0=核心功能、1=常用功能、P2=辅助功能、优化项 | 2.3 优先级与风险评估 |
 | 覆盖率要求 | 设计阶段 100%，评审阶段 ≥98%（<2% 可豁免） | 阶段三/四 |
 | 分阶段输出 | 用例数≥25时，每25-30个用例输出一次进度 | 3.6 输出规则 |
 | 评审循环 | 覆盖率<98%时循环补充，直到通过 | 4.4 判定与循环 |
