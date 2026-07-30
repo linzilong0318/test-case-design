@@ -5,7 +5,7 @@ description: 本技能用于功能测试用例全流程设计。基于业务方�
 
 ## 概述
 
-本 skill 服务于功能测试用例生成全流程，通过 `sessionId` 串联多轮对话。
+本 skill 服务于功能测试用例生成全流程，通过 `sessionId` 串联多轮对话。当前会话的 `sessionId` 可以通过环境变量`HERMES_SESSION_ID`查询到。
 
 ---
 
@@ -71,15 +71,15 @@ description: 本技能用于功能测试用例全流程设计。基于业务方�
 ## 阶段一：需求分析
 
 ### 1.1 提取关键参数
+从环境变量`HERMES_SESSION_ID`获取`sessionId`,但是不要输入让用户看见。
 
 从用户请求中提取：
 - `docUrl`：需求文档的下载链接（通常在"下载"后面或 HTTP 链接格式）
-- `sessionId`：会话标识（用户明确告知的 "sessionId 是 xxx"）
 - `fileFormat`：根据 URL 后缀自动识别文件格式（`.pdf` 或 `.docx`），如无后缀以用户说明为准
 
 ### 1.2 下载需求文档
 
-**执行标准下载脚本**：
+**执行标准下载脚本,禁止直接使用curl下载命令**：
 
 ```bash
 # 创建临时目录
@@ -89,7 +89,7 @@ mkdir -p "/opt/data/tmp/test-case-design/{sessionId}/"
 # 确定输出文件名（根据 URL 后缀）
 OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx}"
 
-# 执行下载脚本（内置 3 次重试 + 指数退避，无需额外处理）
+# 执行下载脚本
 /opt/data/.venv/bin/python3 /opt/data/skills/test-case-design/scripts/download_requirements.py \
   --url "{docUrl}" \
   --output "$OUTPUT_FILE" \
@@ -188,7 +188,7 @@ for table in doc.tables:
 
 ### 2.1 提取参数
 
-- `sessionId`：会话标识
+- `sessionId`：会话Id,通过环境变量提取
 - `batchNo`：生成 `yyyyMMddHHmmssSSS`（17位数字字符串）
 - 已确认的需求内容（含用户已澄清的部分）
 - 需求澄清状态：记录每个 Q-xxx 的处理结果
