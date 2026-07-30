@@ -191,7 +191,10 @@ def call_api_multipart(url, file_path, query_params=None, timeout=60):
         f'Content-Disposition: form-data; name="file"; filename="{file_name}"'
         .encode('utf-8')
     )
-    body_parts.append(b'Content-Type: application/octet-stream')
+    # 根据文件扩展名自动推断 MIME type，兜底为 application/octet-stream
+    import mimetypes
+    mime_type, _ = mimetypes.guess_type(file_path)
+    body_parts.append(f'Content-Type: {mime_type or "application/octet-stream"}'.encode('utf-8'))
     body_parts.append(b'')
     body_parts.append(file_data)
     body_parts.append(f'--{boundary}--'.encode('utf-8'))
