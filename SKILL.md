@@ -90,7 +90,7 @@ mkdir -p "/opt/data/tmp/test-case-design/{sessionId}/"
 OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx}"
 
 # 执行下载脚本
-/opt/data/.venv/bin/python3 /opt/data/skills/test-case-design/scripts/download_requirements.py \
+python /opt/data/skills/test-case-design/scripts/download_requirements.py \
   --url "{docUrl}" \
   --output "$OUTPUT_FILE" \
   --session-id "{sessionId}"
@@ -103,7 +103,7 @@ OUTPUT_FILE="/opt/data/tmp/test-case-design/{sessionId}/requirements.{pdf或docx
 **PDF 文件（`requirements.pdf`）**
 
 ```bash
-/opt/data/.venv/bin/python3 -c "
+python -c "
 import fitz
 doc = fitz.open('/opt/data/tmp/test-case-design/{sessionId}/requirements.pdf')
 for page in doc:
@@ -114,7 +114,7 @@ for page in doc:
 **DOCX 文件（`requirements.docx`）**
 
 ```bash
-/opt/data/.venv/bin/python3 -c "
+python -c "
 from docx import Document
 doc = Document('/opt/data/tmp/test-case-design/{sessionId}/requirements.docx')
 for para in doc.paragraphs:
@@ -642,7 +642,7 @@ Step 3：main agent 处理 reviewer 结果
 
 ```bash
 # 使用 Python 脚本生成 JSON 文件（推荐，避免手动拼接 JSON）
-/opt/data/.venv/bin/python3 -c "
+python -c "
 import json
 # ... 组装用例 JSON ...
 with open('/opt/data/tmp/test-case-design/{sessionId}/cases_payload.json', 'w', encoding='utf-8') as f:
@@ -653,7 +653,7 @@ print(f'用例已持久化: {len(cases)} 条')
 
 **使用标准上传脚本**（自动完成 Nacos 服务发现 + API 调用）：
 ```bash
-python3 /opt/data/skills/test-case-design/scripts/upload_cases.py \
+python /opt/data/skills/test-case-design/scripts/upload_cases.py \
   --payload-file "/opt/data/tmp/test-case-design/{sessionId}/cases_payload.json"
 ```
 
@@ -720,7 +720,7 @@ md_content = f"""
 | 批次号 | {batchNo} |     ← 如果 batchNo 变量名拼错 → NameError
 """
 
-# ❌ 错误做法（禁止）：内联 python3 -c 执行带大量特殊字符的代码
+# ❌ 错误做法（禁止）：内联 python -c 执行带大量特殊字符的代码
 ```
 
 **注意**：涉及时间，一律转成东八区的时间。用 `datetime.now(timezone.utc)` 加上 8 小时。
@@ -738,13 +738,13 @@ md_content = f"""
 
 ```bash
 # 转换待澄清需求清单
-/opt/data/.venv/bin/python3 /opt/data/skills/test-case-design/scripts/md_to_pdf.py \
+python /opt/data/skills/test-case-design/scripts/md_to_pdf.py \
   --input-md "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.md" \
   --output-pdf "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" \
   --css "references/templates/pdf-style.css"
 
 # 转换测试用例评审报告
-/opt/data/.venv/bin/python3 /opt/data/skills/test-case-design/scripts/md_to_pdf.py \
+python /opt/data/skills/test-case-design/scripts/md_to_pdf.py \
   --input-md "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.md" \
   --output-pdf "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf" \
   --css "references/templates/pdf-style.css"
@@ -770,7 +770,7 @@ md_content = f"""
 ```bash
 # 上传待澄清需求清单（用户没有澄清或者新发现的需求和测试点，整理成清单，必须有）
 if [ -f "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" ]; then
-  python3 /opt/data/skills/test-case-design/scripts/upload_file.py \
+  python /opt/data/skills/test-case-design/scripts/upload_file.py \
     --file "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batchNo}.pdf" \
     --session-id "{sessionId}" \
     --batch-no "{batchNo}" \
@@ -778,7 +778,7 @@ if [ -f "/opt/data/tmp/test-case-design/{sessionId}/待澄清需求清单_{batch
 fi
 
 # 上传测试用例评审报告
-python3 /opt/data/skills/test-case-design/scripts/upload_file.py \
+python /opt/data/skills/test-case-design/scripts/upload_file.py \
   --file "/opt/data/tmp/test-case-design/{sessionId}/测试用例评审报告_{batchNo}.pdf" \
   --session-id "{sessionId}" \
   --batch-no "{batchNo}" \
