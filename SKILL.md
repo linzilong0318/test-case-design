@@ -66,6 +66,22 @@ description: 本技能用于功能测试用例全流程设计。基于业务方�
 - **阶段三（用例编写）**：用户确认测试点 + "编写用例"/"生成用例"等关键词
 - **阶段四（用例评审与上传）**：用户确认用例已完成 + "评审"/"上传"等关键词
 
+## ⚠️ 反向排除规则（最高优先级，先于阶段识别执行）
+
+本技能专注"功能测试用例"设计，**不接收也不处理 UI 测试平台的元数据字段**，不生成可自动运行的测试脚本。出现以下任一情况，**立即判定不属于本技能，转 `playwright-e2e-workflow`（场景A/B）**，不要进入本技能任何阶段：
+
+1. 用户消息携带 UI 测试平台元数据字段（任一即为强信号）：
+   - `projectUid` / `folderUid` / `displayName` / `relativePath` / `selectedTestCaseUids` / `selectedResourceUids` / `functionUid`
+   - 或页面相对路径以 `/iotWeb`、`/webtest` 等平台路径开头
+2. 用户句式明确指向自动化脚本生成，例如：
+   - 「请帮我创建Web功能测试」
+   - 「请帮我创建Web测试脚本」
+   - 「请帮我执行并修改Web测试脚本」
+   - 以及任何"创建/执行/编写/修复 Playwright 测试脚本"的表述
+3. 需求产出物是可自动运行的脚本，而非供评审的功能用例
+
+> 判别要点：先看消息是否携带 UI 平台元数据字段或"创建Web功能测试/Web测试脚本"句式，命中则直接转 playwright-e2e-workflow；只有用户明确要求"生成[功能]测试用例""提取测试点""用例评审"且需提供/分析需求文档时，才进入本技能流程。
+
 ---
 
 ## 阶段一：需求分析
@@ -840,6 +856,8 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 ✅ 可生成：功能测试（含表单验证、状态流转、业务规则、集成场景、边界值、异常场景）
 ❌ 不可生成：接口测试、AI Agent 测试、性能测试、兼容性测试、渗透测试、测试方案、测试策略、测试计划、自动化脚本
 
+> ⚠️ 若用户请求含 UI 平台元数据字段（projectUid/folderUid/relativePath/displayName 等），或表述为「请帮我创建Web功能测试」/「请帮我创建Web测试脚本」等 Playwright 脚本相关，应转 `playwright-e2e-workflow`，详见顶部「反向排除规则」。
+
 ---
 
 ## 关键规则速查
@@ -880,3 +898,8 @@ rm -rf "/opt/data/tmp/test-case-design/{sessionId}/"
 | `references/examples/format-spec.md` | API JSON 输出格式规范（type 固定为 1） |
 | `references/templates/clarification-checklist.md` | 待澄清需求清单模板 |
 | `references/templates/review-report.md` | 测试用例评审报告模板（含 4 维度评审 + 覆盖率 ≥98%） |
+
+### 运行环境
+| 文件 | 用途 |
+|------|------|
+| `references/runtime-setup.md` | 脚本依赖安装（nacos-sdk-python 2.0.x + md2pdf/weasyprint）与 venv 执行方式 |
