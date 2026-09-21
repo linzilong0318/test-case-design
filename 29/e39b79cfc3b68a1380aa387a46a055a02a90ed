@@ -1,0 +1,39 @@
+outputs/test-case-design-multiagent/一种基于多Agent编排与上下文隔离的测试用例自动生成方法及系统_20260827125122.md
+  h_d1373fd327b181 6,23-46,51-53,55,60,66,75,81,87,93,102,108,114,123,129,135,141,147-151,159-163,169,171,173,175,191,193-197,204,206-210,224,226-227,229,231-233,235,237-238,240,242-244,283-285,294-295,317,325,335-350,356-360,366-370,379,382,388,398,405
+  s_a6736b1437532a::t_238d3fa1bd797c 187,198
+  s_a6736b1437532a::t_09b83d337c4b91 63,69,78,84,90,96,105,111,117,126,132,138,177-179,185-186,188-190,192,199-203,205,211-220,250-273,277-280,287-292,296-304,308-315,319-323,327-328,389-394,401-402
+  s_a6736b1437532a::t_b32425378cf90e 411-482
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "29e39b79cfc3b68a1380aa387a46a055a02a90ed",
+  "prompts": {},
+  "humans": {
+    "h_d1373fd327b181": {
+      "author": "dylinzl <dylinzl@chint.com>"
+    }
+  },
+  "sessions": {
+    "s_a6736b1437532a": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8beaf37d648c8ace20e751",
+        "model": "DeepSeek-V4.1-Flash__max"
+      },
+      "human_author": "dylinzl <dylinzl@chint.com>",
+      "custom_attributes": {
+        "display_model_name": "DeepSeek-V4.1-Flash",
+        "session_id": "6a8beaf37d648c8ace20e751",
+        "tool_name": "RunCommand",
+        "client_type": "ide",
+        "edit_kind": "bash",
+        "external_session_id": "6a8beaf37d648c8ace20e751",
+        "source_scene": "agent",
+        "tool_use_id": "6ab0839d5d73ccbcc80540ab",
+        "operation_id": "6ab0839d5d73ccbcc80540ab",
+        "runtime_client": "trae-tob-git-ai"
+      }
+    }
+  }
+}
